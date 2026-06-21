@@ -720,6 +720,7 @@ function aiTransfers(){
     const fee=round1(askingFee(p));
     G.market.splice(i,1);
     G.scoutQueue=G.scoutQueue.filter(q=>q.id!==p.id);
+    p.free=false;
     club.squad.push(p);
     G.market.push(mkFreeMaybe(makePlayer(pick(POS), Math.random()<0.2?rnd(3,8):0)));
     pushNews(`🔻 <b>${club.name}</b> 抢先签下 <b>${p.name}</b>（${p.ovr}评分，${eur(fee)}）。`,"bad");
@@ -1031,6 +1032,7 @@ function acceptOffer(playerId){
   const club=G.table.find(t=>t.name===o.fromClub);
   untrain(playerId);
   p.owned=false; p.starter=false; p.wage=0; p.contractYears=0;
+  p.free=false;
   if(club&&club.squad){ club.squad.push(p); club.str=round1(clubStr(club)); } // 真实加入对手阵容
   G.squad.splice(pi,1); G.offers.splice(oi,1);
   toast(`接受 ${o.fromClub} 的报价，${p.name} 转会（${eur(o.amount)}）`);
@@ -1203,7 +1205,7 @@ function marketList(){
   let list=G.market.map(p=>({p,club:null}));
   rivalClubs().forEach(c=>{ if(c.squad) c.squad.forEach(p=>list.push({p,club:c})); });
   if(G.marketFilterPos!=="ALL") list=list.filter(e=>e.p.pos===G.marketFilterPos);
-  if(G.marketFreeOnly) list=list.filter(e=>e.p.free);
+  if(G.marketFreeOnly) list=list.filter(e=>!e.club && e.p.free);
   const raw=(G.marketFilterText||"").trim(), t=raw.toLowerCase();
   if(t) list=list.filter(e=>e.p.name.toLowerCase().includes(t) || (e.p.nat&&e.p.nat.includes(raw)));
   const sf=G.marketSort||'ovr', sd=G.marketSortDir||-1;
@@ -2053,7 +2055,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!G.trainSlots) G.trainSlots=G.coachLevel+2;
   if(G.goalRank==null) G.goalRank=5;
   if(!G.archetype) G.archetype="mid";
-  rivalClubs().forEach(c=>{ if(!c.tactic) c.tactic=pick(TACTIC_KEYS); if(c.squad) c.str=round1(clubStr(c)); });
+  rivalClubs().forEach(c=>{ if(!c.tactic) c.tactic=pick(TACTIC_KEYS); if(c.squad){ c.squad.forEach(p=>p.free=false); c.str=round1(clubStr(c)); } });
   if(G.selRival==null) G.selRival=0;
   if(!G.tactic) G.tactic="平衡";
   if(!G.academy) G.academy={level:1, prospects:[]};
