@@ -441,7 +441,7 @@ function newGame(world, clubIdx, budget){
     coachLevel:1, trainSlots:3, training:[],
     formation:"4-3-3", tactic:"平衡", lineup:[], _sel:null,
     offers:[], academy:{level:1, prospects:[], targetNat:null},
-    rep:50, sponsors:[], sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual"},
+    rep:50, sponsors:[], sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
     conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
     cup:null, midweekDone:false,
     lastWageBill:0, finished:false,
@@ -633,6 +633,7 @@ function nextRound(){
   const mg=samplePoisson(myXG), og=samplePoisson(opXG);
   applyResult(youIdx,oppIdx,mg,og);
   creditGoals(starters(), mg); if(opp.squad) creditGoals(opp.squad, og);
+  matchGrowth(starters());
   const res=mg>og?"W":mg<og?"L":"D";
   const prize=res==="W"?2.5:res==="D"?0.9:0.2;
   G.cash=round1(G.cash+prize);
@@ -655,6 +656,8 @@ function nextRound(){
   evolveMarket();
   resolveScouts();
   aiTransfers();
+  // 国家队邀约随时间滚动刷新（未任职时每 3 轮变化一次）
+  if(G.national && !G.national.nation && G.round%3===0){ genNTInvites(); pushNews(`📣 国家队邀约更新（见「🌐 国家队」）。`,"match"); }
 
   // 工资支出
   const wb=round2(wageBill()+loanWageBill()); const inc=sponsorIncome(); G.lastWageBill=wb; G.cash=round1(G.cash-wb+inc);
@@ -786,28 +789,22 @@ function endSeason(){
   const metGoal = rank<=G.goalRank;
   pushNews(`🏁 第 ${G.season} 赛季结束！最终第 ${rank} 名（目标前 ${G.goalRank}）— ${metGoal?"达成预期 ✅":"未达预期 ⚠️"}，赛季奖金 +${eur(bonus)}。`, metGoal?"good":"bad");
 
-  // 成长 / 衰退：出场时间 × 球队战绩 × 训练
-  const teamFactor = rank<=2?1.20 : rank<=4?1.05 : rank<=6?0.95 : 0.85;
+  // 赛季末：你的球员靠每场比赛动态成长（matchGrowth），此处只老化 + 训练加成 + 兜底衰退；世界球员（无逐场模拟）整体结算
   allPlayers().forEach(p=>{
     p.age++;
     const gap=p.potential-p.ovr;
-    const inT = p.owned && G.training.includes(p.id);
-    const trainGrow = inT ? (0.6 + G.coachLevel*0.35) : 0;            // 训练带来的额外成长点
-    const playFactor = p.owned ? clamp(0.4+p.apps/G.totalRounds,0.4,1.4) : 1.0;
-    const tf = p.owned ? teamFactor : 1.0;
-    if(p.age<=23 && gap>0){
-      const g=Math.round(gap*rnd(0.12,0.30)*playFactor*tf + trainGrow*rnd(1,2.4));
-      p.ovr=clamp(p.ovr+clamp(g,0,gap),48,99);
-    } else if(p.age<=27 && gap>0){
-      if(Math.random()<0.45+(inT?0.3:0)) p.ovr=clamp(p.ovr+rint(0,2)+(inT?1:0),48,99);
-    } else if(p.age>=30){
-      let dec=rint(0,3);
-      if(inT) dec=Math.max(0, dec-(G.coachLevel>=2?2:1));            // 训练减缓衰退
-      p.ovr=clamp(p.ovr-dec,42,99);
+    if(p.owned){
+      const inT=G.training.includes(p.id);
+      if(inT && p.age<=27 && gap>0) p.ovr=clamp(p.ovr+rint(0,1)+(G.coachLevel>=2?1:0),48,99); // 训练额外加成
+      if(p.age>=31 && !inT && Math.random()<0.4) p.ovr=clamp(p.ovr-rint(0,1),42,99);          // 老将自然衰退
+    } else {
+      if(p.age<=23 && gap>0) p.ovr=clamp(p.ovr+Math.round(gap*rnd(0.16,0.36)),48,99);
+      else if(p.age<=27 && gap>0 && Math.random()<0.5) p.ovr=clamp(p.ovr+rint(0,2),48,99);
+      else if(p.age>=30) p.ovr=clamp(p.ovr-rint(0,3),42,99);
     }
     p.apps=0; p.gls=0; p.ast=0;
     p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
-    if(p.owned) p.wage=wageDemand(p.ovr); // 涨薪
+    if(p.owned) p.wage=wageDemand(p.ovr);
   });
 
   // 合同 -1，到期处理
@@ -1674,6 +1671,9 @@ function genNTInvites(){
   G.national.invites=elig.sort(()=>Math.random()-0.5).slice(0,3);
 }
 function acceptNTInvite(nat){ G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; toast(`你已出任 ${nat} 国家队主帅`); pushNews(`🌐 你接受邀请，出任 <b>${NATIONS[nat].flag}${nat}</b> 国家队主帅！`,"good"); save(); render(); }
+const NT_HIGH_REP=80;
+function freePickAvailable(){ return (G.rep||50)>=NT_HIGH_REP && (G.national.lastFreePick==null || (G.season-G.national.lastFreePick)>=4); }
+function freePickNT(nat){ if(!NATIONS[nat]) return; G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; G.national.lastFreePick=G.season; toast(`高声望特权：执教 ${nat} 国家队`); pushNews(`🎖️ 高声望特权：你自由选择执教 <b>${NATIONS[nat].flag}${nat}</b> 国家队！`,"good"); save(); render(); }
 function resignNT(){ const n=G.national.nation; G.national.nation=null; G.national.comp=null; genNTInvites(); toast("已卸任国家队"); if(n) pushNews(`你卸任了 ${n} 国家队主帅。`,"match"); save(); render(); }
 function setNtTactic(t){ if(!TACTICS[t])return; G.national.tactic=t; save(); render(); }
 function ntTacticBonus(myStr,oppStr){ const t=G.national.tactic||"平衡"; let att=0,def=0;
@@ -1783,6 +1783,7 @@ function playContiMatch(){
   if((G.tactic||"平衡")==="高位压迫"){ mxg*=1.06; oxg*=1.10; }
   let mg=samplePoisson(mxg), og=samplePoisson(oxg);
   f.played=true; f.mg=mg; f.og=og;
+  matchGrowth(starters());
   const tier=contiTiers()[c.tierIdx];
   if(c.stage==='league'){
     f.win=mg>og; f.draw=mg===og; c.idx++;
@@ -1850,6 +1851,7 @@ function playCupMatch(){
   let mxg=clamp((r.att*tm.att-f.oppStr)/9+1.35,0.2,5.2), oxg=clamp((f.oppStr-r.def*tm.def)/9+1.35,0.2,5.2);
   let mg=samplePoisson(mxg), og=samplePoisson(oxg);
   f.played=true; f.mg=mg; f.og=og;
+  matchGrowth(starters());
   let win=mg>og || (mg===og && (r.ovr+rnd(0,3))>=(f.oppStr+rnd(0,3)));
   if(mg===og){ if(win) f.mg=mg+1; else f.og=og+1; }
   f.win=win;
@@ -1864,6 +1866,22 @@ function finishCup(champ){
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
   G.cup.outcome=`${msg}（声望+${rep}，奖金+${eur(cash)}）`;
   pushNews(`🏆 ${G.cup.outcome}`,"good");
+}
+// 逐场动态成长：每场比赛后，参赛球员小幅向潜力成长 / 老将衰退（评分、身价即时变化）
+function matchGrowth(players){
+  if(!players) return;
+  players.forEach(p=>{
+    const gap=p.potential-p.ovr;
+    const inT=p.owned && G.training && G.training.includes(p.id);
+    let ch=0, dec=false;
+    if(p.age<=23 && gap>0) ch=clamp(0.04+gap*0.008+(inT?0.04:0)+(p.age<=19?0.03:0),0.03,0.30);
+    else if(p.age<=27 && gap>0) ch=0.03+(inT?0.03:0);
+    else if(p.age>=30){ ch=inT?0.02:0.05; dec=true; }
+    if(ch>0 && Math.random()<ch){
+      p.ovr=clamp(p.ovr+(dec?-1:1),40,99);
+      p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
+    }
+  });
 }
 // 进球/助攻归属（仅本国本级别联赛比赛，用于数据榜）
 function creditGoals(sq, n){
@@ -1929,12 +1947,16 @@ function viewCalendar(){
   <div class="panel"><h2>🏆 国内杯</h2><div class="negbox">${cupHTML}</div>${G.cup&&G.cup.done?`<div class="hint">${G.cup.outcome}</div>`:""}</div>`;
 }
 function viewNational2(){
-  if(!G.national) G.national={nation:null,titles:0,tactic:"平衡",invites:[],comp:null,nextStage:"contQual"};
+  if(!G.national) G.national={nation:null,titles:0,tactic:"平衡",invites:[],comp:null,nextStage:"contQual",lastFreePick:-99};
   const N=G.national, my=N.nation;
+  const freeBlock = freePickAvailable()? `<div class="panel" style="border-color:var(--gold)"><h2>🎖️ 高声望特权 · 自由选择国家队</h2>
+    <div class="hint" style="margin-bottom:6px">你的声望 ≥ ${NT_HIGH_REP}，可<b>直接选择任意国家队</b>执教（每 4 赛季一次）。选择后立即上任。</div>
+    <select onchange="if(this.value)freePickNT(this.value)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px;font-size:14px;width:100%">
+      <option value="">— 选择一个国家队 —</option>${NAT_KEYS.map(k=>`<option value="${k}">${NATIONS[k].flag} ${k}（实力约 ${Math.round(ntStrength(k))}）</option>`).join("")}</select></div>` : "";
   if(!my){
-    const inv=(N.invites||[]).map(k=>`<div class="negbox"><div class="l"><span>${NATIONS[k].flag} <b>${k}</b>（实力约 ${Math.round(ntStrength(k))} · ${confOf(k)}）邀请你执教</span></div><div style="margin-top:8px"><button class="btn sm" onclick="acceptNTInvite('${k}')">接受邀请</button></div></div>`).join("")||`<div class="hint">暂无邀请。提升声望后会有国家队邀请你（声望越高，邀请的球队越强）。</div>`;
-    return `<div class="panel"><h2>🌐 国家队（邀请制）</h2>
-      <div class="hint" style="margin-bottom:6px">国家队主帅为<b>邀请制</b>：随着俱乐部声望提升，会有国家队邀请你执教（声望越高，可执教的球队越强）。任职后与俱乐部工作并行，亲自指挥<b>洲际杯</b>与<b>世界杯</b>的预选赛和决赛圈。</div>
+    const inv=(N.invites||[]).map(k=>`<div class="negbox"><div class="l"><span>${NATIONS[k].flag} <b>${k}</b>（实力约 ${Math.round(ntStrength(k))} · ${confOf(k)}）邀请你执教</span></div><div style="margin-top:8px"><button class="btn sm" onclick="acceptNTInvite('${k}')">接受邀请</button></div></div>`).join("")||`<div class="hint">暂无邀请。提升声望后会有国家队邀请你（声望越高，邀请的球队越强、刷新越快）。</div>`;
+    return freeBlock + `<div class="panel"><h2>🌐 国家队（邀请制）</h2>
+      <div class="hint" style="margin-bottom:6px">国家队主帅为<b>邀请制</b>：随俱乐部声望提升会有邀约（声望越高球队越强，邀约赛季内滚动刷新）；声望达到 ${NT_HIGH_REP} 后可每 4 赛季<b>自由选择</b>一次。任职后与俱乐部并行，亲自指挥洲际杯与世界杯。</div>
       ${inv}</div>`;
   }
   const c=N.comp, st=c?NT_STAGES[c.stage]:null;
@@ -1954,7 +1976,7 @@ function viewNational2(){
     else campHTML+=`<div class="hint" style="margin-top:8px">下一场将通过顶部「下一场」按钮进行，与联赛自动穿插。</div>`;
   }
   const xi=ntPool(my).sort((a,b)=>b.ovr-a.ovr).slice(0,11);
-  return `<div class="panel"><h2>🌐 ${NATIONS[my].flag} ${my} 国家队</h2>
+  return freeBlock + `<div class="panel"><h2>🌐 ${NATIONS[my].flag} ${my} 国家队</h2>
     <div class="squadsum">
       <div class="ring"><span class="num">${Math.round(ntStrength(my))}</span><span class="lbl">实力</span></div>
       <div class="ring"><span class="num">${ntPool(my).length}</span><span class="lbl">可征召</span></div>
@@ -2070,6 +2092,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.national.comp===undefined) G.national.comp=null;
   if(!G.national.tactic) G.national.tactic="平衡";
   if(!G.national.nextStage) G.national.nextStage="contQual";
+  if(G.national.lastFreePick==null) G.national.lastFreePick=-99;
   if(!G.national.nation && !G.national.invites.length) genNTInvites();
   if(!G.conf) G.conf="欧洲";
   if(!G.conti) G.conti={tier:null, comp:null, titles:0};
