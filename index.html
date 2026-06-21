@@ -1,0 +1,2160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚽ 足球交易模拟器</title>
+<style>
+  :root{
+    --pitch:#0c1f17; --pitch2:#102a1f; --card:#16352a; --card2:#1d4234;
+    --line:#2a5a45; --accent:#39d98a; --accent2:#2ec27e; --gold:#ffd24a;
+    --txt:#e8f5ee; --dim:#8fb5a4; --up:#3ddc84; --down:#ff6b6b; --warn:#ffb84d;
+    --pot:#c98bff;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    font-family:"Segoe UI","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,var(--pitch),var(--pitch2));
+    color:var(--txt); min-height:100vh; padding:14px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1100px; margin:0 auto}
+  .topbar{
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:12px 16px; margin-bottom:12px; position:sticky; top:8px; z-index:20;
+    box-shadow:0 6px 20px rgba(0,0,0,.3);
+  }
+  .topbar .club{font-size:18px; font-weight:700; display:flex; align-items:center; gap:8px}
+  .stat{display:flex; flex-direction:column; line-height:1.15; padding:0 10px; border-left:1px solid var(--line)}
+  .stat .lbl{font-size:11px; color:var(--dim)}
+  .stat .val{font-size:16px; font-weight:700}
+  .stat .val.gold{color:var(--gold)}
+  .stat .val.neg{color:var(--down)}
+  .spacer{flex:1}
+  .tabs{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap}
+  .tab{
+    background:var(--card); border:1px solid var(--line); color:var(--dim);
+    padding:9px 16px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:600; transition:.15s;
+  }
+  .tab:hover{color:var(--txt)}
+  .tab.active{background:var(--accent); color:#06231a; border-color:var(--accent)}
+  button{font-family:inherit}
+  .btn{background:var(--accent); color:#06231a; border:none; border-radius:9px; padding:9px 18px; font-size:14px; font-weight:700; cursor:pointer; transition:.15s}
+  .btn:hover{background:var(--accent2)}
+  .btn:disabled{background:#2a4a3c; color:#5e8071; cursor:not-allowed}
+  .btn.big{padding:13px 26px; font-size:15px}
+  .btn.ghost{background:transparent; border:1px solid var(--line); color:var(--txt)}
+  .btn.ghost:hover{border-color:var(--accent); color:var(--accent)}
+  .btn.sell{background:var(--gold); color:#3a2c00}
+  .btn.sell:hover{filter:brightness(1.08)}
+  .btn.scout{background:var(--pot); color:#2a0a45}
+  .btn.scout:hover{filter:brightness(1.08)}
+  .btn.sm{padding:6px 10px; font-size:12px}
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:12px}
+  .panel h2{font-size:16px; margin-bottom:12px; display:flex; align-items:center; gap:8px}
+  .grid{display:grid; gap:10px}
+  .pcard{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:11px; display:flex; flex-direction:column; gap:7px; transition:.15s}
+  .pcard:hover{border-color:var(--accent)}
+  .pcard.starter{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset}
+  .pcard.injured{opacity:.78}
+  .pcard.wonder{border-color:var(--pot)}
+  .prow{display:flex; align-items:center; gap:8px}
+  .pos{font-size:11px; font-weight:800; width:34px; text-align:center; border-radius:6px; padding:3px 0; flex-shrink:0}
+  .pos.GK{background:#5a4ad9}.pos.DF{background:#2e8ad9}.pos.MF{background:#27a567}.pos.FW{background:#d96b2e}
+  .pname{font-weight:700; font-size:14px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .ovr{font-weight:800; font-size:16px; min-width:24px; text-align:right}
+  .meta{font-size:12px; color:var(--dim); display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .val{font-weight:700; color:var(--txt)}
+  .chg{font-size:12px; font-weight:700}
+  .chg.up{color:var(--up)} .chg.down{color:var(--down)} .chg.flat{color:var(--dim)}
+  .form-pill{font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px}
+  .pot{font-weight:700; font-size:12px}
+  .pot .stars{letter-spacing:-1px}
+  .pot.known{color:var(--pot)} .pot.unknown{color:var(--dim)}
+  .wonder-tag{background:var(--pot); color:#2a0a45; font-size:10px; font-weight:800; padding:1px 6px; border-radius:5px}
+  .ctr-tag{font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; background:#3a2c00; color:var(--gold)}
+  .ctr-tag.warn{background:#4a1f1f; color:var(--down)}
+  .pcard .actions{display:flex; gap:6px; margin-top:1px}
+  .pcard .actions button{flex:1}
+  .squadsum{display:flex; gap:16px; flex-wrap:wrap; align-items:center; margin-bottom:12px}
+  .ring{display:flex; flex-direction:column; align-items:center; gap:2px}
+  .ring .num{font-size:23px; font-weight:800}
+  .ring .num.warn{color:var(--warn)} .ring .num.neg{color:var(--down)}
+  .ring .lbl{font-size:11px; color:var(--dim)}
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th,td{padding:9px 10px; text-align:left; border-bottom:1px solid var(--line)}
+  th{color:var(--dim); font-size:12px; font-weight:600}
+  tr.you{background:rgba(57,217,138,.12)}
+  td.c,th.c{text-align:center}
+  .pts{font-weight:800; color:var(--accent)}
+  .real{color:var(--dim); font-size:12px}
+  .news-item{border-left:3px solid var(--line); padding:8px 12px; margin-bottom:8px; background:var(--card2); border-radius:0 8px 8px 0; font-size:13px}
+  .news-item.good{border-left-color:var(--up)}
+  .news-item.bad{border-left-color:var(--down)}
+  .news-item.match{border-left-color:var(--gold)}
+  .news-item.scout{border-left-color:var(--pot)}
+  .news-item .w{color:var(--dim); font-size:11px; margin-right:6px}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--card2); border:1px solid var(--accent); color:var(--txt); padding:12px 22px; border-radius:10px; font-size:14px; opacity:0; pointer-events:none; transition:.25s; z-index:80; box-shadow:0 8px 24px rgba(0,0,0,.4); max-width:90vw; text-align:center}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  .overlay{position:fixed; inset:0; background:rgba(4,12,9,.72); display:none; align-items:center; justify-content:center; z-index:60; padding:16px}
+  .overlay.show{display:flex}
+  .modal{background:var(--card); border:1px solid var(--accent); border-radius:16px; padding:24px; max-width:480px; width:100%; max-height:90vh; overflow:auto}
+  .modal.center{text-align:center}
+  .modal h2{font-size:20px; margin-bottom:12px}
+  .modal .score{font-size:40px; font-weight:800; margin:10px 0; letter-spacing:2px; text-align:center}
+  .modal .res-W{color:var(--up)} .modal .res-L{color:var(--down)} .modal .res-D{color:var(--gold)}
+  .modal p{color:var(--dim); margin-bottom:8px; font-size:14px}
+  .field{margin:12px 0; text-align:left}
+  .field label{display:block; font-size:13px; color:var(--dim); margin-bottom:5px}
+  .field .row{display:flex; align-items:center; gap:10px}
+  .field input[type=number], .field input[type=text]{background:var(--card2); border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:9px 12px; font-size:15px; width:100%}
+  .field input[type=range]{flex:1; accent-color:var(--accent)}
+  .field .rngval{font-weight:700; min-width:60px; text-align:right}
+  .negbox{background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:6px; font-size:13px}
+  .negbox .l{display:flex; justify-content:space-between; margin:3px 0}
+  .negbox .l b{color:var(--txt)}
+  .filterbar{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; align-items:center}
+  .filterbar input{background:var(--card2); border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:7px 12px; font-size:13px; flex:1; min-width:120px}
+  .chip{background:var(--card2); border:1px solid var(--line); color:var(--dim); padding:6px 12px; border-radius:20px; font-size:12px; cursor:pointer; font-weight:600}
+  .chip.active{background:var(--accent); color:#06231a; border-color:var(--accent)}
+  .empty{color:var(--dim); text-align:center; padding:30px; font-size:14px}
+  .hint{font-size:12px; color:var(--dim); margin-top:4px; line-height:1.5}
+  .scoutslot{display:inline-flex; align-items:center; gap:6px; background:var(--card2); border:1px solid var(--line); border-radius:8px; padding:6px 12px; margin:0 6px 6px 0; font-size:13px}
+  /* ===== 可视化球场 ===== */
+  .pitch{position:relative; width:100%; max-width:470px; margin:6px auto 0; aspect-ratio:3/4;
+    background:repeating-linear-gradient(#1c4a35 0 12.5%, #173b2c 12.5% 25%);
+    border:2px solid #2f6b4f; border-radius:12px; overflow:hidden; touch-action:none}
+  .pitch::before{content:""; position:absolute; left:6%; right:6%; top:50%; border-top:2px solid #ffffff2e}
+  .pitch::after{content:""; position:absolute; left:50%; top:50%; width:84px; height:84px; transform:translate(-50%,-50%); border:2px solid #ffffff2e; border-radius:50%}
+  .slot{position:absolute; transform:translate(-50%,-50%); text-align:center; width:64px; cursor:grab; user-select:none; z-index:2}
+  .slot .disc{width:44px; height:44px; border-radius:50%; margin:0 auto; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; color:#fff; border:2px solid #ffffff66; box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  .slot.empty .disc{border-style:dashed; background:#ffffff14; color:#cfe9dd; font-size:12px}
+  .slot.empty.avail .disc{border-color:var(--accent); color:var(--accent)}
+  .slot.oop .disc{box-shadow:0 0 0 2px var(--warn), 0 2px 6px rgba(0,0,0,.35)}
+  .slot .disc.GK{background:#5a4ad9}.slot .disc.DF{background:#2e8ad9}.slot .disc.MF{background:#27a567}.slot .disc.FW{background:#d96b2e}
+  .slot .nm{font-size:10px; margin-top:2px; color:#eaf6ef; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000}
+  .bench{display:flex; gap:6px; overflow-x:auto; padding:4px 2px 8px}
+  .benchchip{flex:0 0 auto; background:var(--card2); border:1px solid var(--line); border-radius:8px; padding:6px 9px; cursor:grab; font-size:12px; white-space:nowrap; display:flex; align-items:center; gap:6px}
+  .benchchip.sel{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset}
+  .benchchip.injured{opacity:.5; cursor:not-allowed}
+  @media(max-width:560px){ .stat{padding:0 6px} .stat .val{font-size:14px} .topbar .club{font-size:15px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="club">⚽ <span id="clubName">绿茵FC</span></div>
+    <div class="stat"><span class="lbl">赛季 / 轮次</span><span class="val" id="weekVal">S1 · 第1轮</span></div>
+    <div class="stat"><span class="lbl">联赛排名</span><span class="val" id="rankVal">—</span></div>
+    <div class="stat"><span class="lbl">现金</span><span class="val gold" id="cashVal">€0</span></div>
+    <div class="stat"><span class="lbl">净资产</span><span class="val" id="networthVal">€0</span></div>
+    <div class="stat"><span class="lbl">周薪/轮</span><span class="val" id="wageVal">€0</span></div>
+    <div class="spacer"></div>
+    <button class="btn big" id="nextBtn">下一轮 ▶</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="squad">🧤 我的阵容</div>
+    <div class="tab" data-tab="market">💱 转会市场</div>
+    <div class="tab" data-tab="rivals">🆚 对手</div>
+    <div class="tab" data-tab="scout">🔭 球探</div>
+    <div class="tab" data-tab="train">🎓 训练</div>
+    <div class="tab" data-tab="academy">🌱 青训</div>
+    <div class="tab" data-tab="biz">💼 经营</div>
+    <div class="tab" data-tab="national">🌐 国家队</div>
+    <div class="tab" data-tab="conti">🌍 洲际杯</div>
+    <div class="tab" data-tab="cal">📅 日历</div>
+    <div class="tab" data-tab="league">🏆 联赛积分</div>
+    <div class="tab" data-tab="news">📰 新闻</div>
+    <div class="spacer"></div>
+    <div class="tab" data-tab="menu">⚙️</div>
+  </div>
+
+  <div id="view"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   足球交易模拟器  v2 — 混合模式（经理 + 交易员）
+   A 阶段：潜力&成长 / 球探系统 / 转会谈判（周薪·合同·佣金）
+   单文件 / 零依赖 / localStorage 存档
+   ========================================================================= */
+
+// ---------- 工具 ----------
+const $ = s => document.querySelector(s);
+const rnd = (a,b) => a + Math.random()*(b-a);
+const rint = (a,b) => Math.floor(rnd(a,b+1));
+const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
+const round1 = x => Math.round(x*10)/10;
+const round2 = x => Math.round(x*100)/100;
+function eur(m){
+  if(m<0) return "-"+eur(-m);
+  if(m>=1000) return "€"+(m/1000).toFixed(2)+"B";
+  if(m>=10) return "€"+m.toFixed(1)+"M";
+  if(m>=1) return "€"+m.toFixed(2)+"M";
+  return "€"+Math.round(m*1000)+"K";
+}
+function samplePoisson(l){ let L=Math.exp(-l),k=0,p=1; do{k++;p*=Math.random();}while(p>L); return k-1; }
+function weightedPick(pairs){ // [[item,w],...]
+  let tot=pairs.reduce((a,p)=>a+p[1],0), r=Math.random()*tot;
+  for(const [it,w] of pairs){ if((r-=w)<=0) return it; } return pairs[0][0];
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+// ---------- 静态数据 ----------
+const POS = ["GK","DF","MF","FW"];
+const POS_CN = {GK:"门将",DF:"后卫",MF:"中场",FW:"前锋"};
+const FORMS = [
+  {name:"冰冷", mult:0.86, color:"#5b7fb5"},
+  {name:"低迷", mult:0.94, color:"#7a8fa0"},
+  {name:"一般", mult:1.00, color:"#8fb5a4"},
+  {name:"良好", mult:1.08, color:"#4fc97a"},
+  {name:"火热", mult:1.18, color:"#ff9d3d"},
+];
+// 国籍：旗帜 + 取名池（first/last）。权重决定出现概率。
+const NATIONS = {
+  "巴西":{flag:"🇧🇷", w:14, f:["Gabriel","Lucas","Rodrigo","Vinicius","Bruno","Matheus","Rafael","Pedro","Endrick","Joao","Caio","Igor"], l:["Silva","Santos","Souza","Oliveira","Costa","Ferreira","Almeida","Ribeiro","Gomes","Martins","Barbosa","Rocha"]},
+  "阿根廷":{flag:"🇦🇷", w:11, f:["Lautaro","Julian","Enzo","Alexis","Nicolas","Thiago","Gonzalo","Paulo","Franco","Exequiel","Joaquin","Tomas"], l:["Martinez","Alvarez","Fernandez","Gonzalez","Romero","Paredes","Acuna","Molina","Correa","Palacios","Garnacho","Mac Allister"]},
+  "法国":{flag:"🇫🇷", w:11, f:["Kylian","Antoine","Aurelien","Ousmane","Randal","Marcus","Theo","Jules","William","Eduardo","Mattéo","Hugo"], l:["Mbappe","Griezmann","Tchouameni","Camavinga","Dembele","Thuram","Hernandez","Kounde","Saliba","Coman","Barcola","Maignan"]},
+  "英格兰":{flag:"🇬🇧", w:11, f:["Harry","Jude","Phil","Bukayo","Marcus","Declan","Cole","Jack","Trent","Reece","Ollie","Levi"], l:["Kane","Bellingham","Foden","Saka","Rashford","Rice","Palmer","Grealish","Watkins","James","Gordon","Mainoo"]},
+  "西班牙":{flag:"🇪🇸", w:10, f:["Pedri","Gavi","Alvaro","Dani","Mikel","Rodrigo","Fabian","Ferran","Nico","Marco","Lamine","Fermin"], l:["Gonzalez","Olmo","Morata","Carvajal","Merino","Ruiz","Torres","Williams","Asensio","Cubarsi","Yamal","Baena"]},
+  "德国":{flag:"🇩🇪", w:9, f:["Jamal","Florian","Kai","Leroy","Joshua","Ilkay","Niclas","Robert","Thomas","Pascal","Maximilian","Deniz"], l:["Musiala","Wirtz","Havertz","Sane","Kimmich","Gundogan","Fullkrug","Andrich","Muller","Gross","Schlotterbeck","Undav"]},
+  "葡萄牙":{flag:"🇵🇹", w:9, f:["Bruno","Rafael","Bernardo","Joao","Goncalo","Vitinha","Diogo","Ruben","Nuno","Pedro","Francisco","Geovany"], l:["Fernandes","Leao","Silva","Felix","Ramos","Neves","Jota","Dias","Mendes","Goncalves","Inacio","Trincao"]},
+  "荷兰":{flag:"🇳🇱", w:8, f:["Cody","Frenkie","Memphis","Virgil","Denzel","Xavi","Nathan","Tijjani","Wout","Donyell","Micky","Brian"], l:["Gakpo","de Jong","Depay","van Dijk","Dumfries","Simons","Ake","Reijnders","Weghorst","Malen","van de Ven","Brobbey"]},
+  "意大利":{flag:"🇮🇹", w:8, f:["Federico","Nicolo","Sandro","Gianluca","Davide","Alessandro","Giacomo","Lorenzo","Riccardo","Mateo","Wilfried","Moise"], l:["Chiesa","Barella","Tonali","Scamacca","Frattesi","Bastoni","Raspadori","Pellegrini","Calafiori","Retegui","Gnonto","Kean"]},
+  "比利时":{flag:"🇧🇪", w:6, f:["Kevin","Romelu","Jeremy","Youri","Amadou","Leandro","Charles","Dodi","Maxim","Arthur","Johan","Roméo"], l:["De Bruyne","Lukaku","Doku","Tielemans","Onana","Trossard","De Ketelaere","Lukebakio","De Cuyper","Theate","Bakayoko","Lavia"]},
+  "日本":{flag:"🇯🇵", w:6, f:["Takefusa","Kaoru","Wataru","Daichi","Ritsu","Ao","Junya","Takumi","Hidemasa","Koki","Reo","Takehiro"], l:["Kubo","Mitoma","Endo","Kamada","Doan","Tanaka","Ito","Minamino","Morita","Machida","Hatate","Tomiyasu"]},
+  "韩国":{flag:"🇰🇷", w:5, f:["Heung-min","Min-jae","Kang-in","Hee-chan","Jae-sung","Woo-young","Seung-ho","In-beom","Gue-sung","Sang-ho","Ji-soo","Tae-hwan"], l:["Son","Kim","Lee","Hwang","Jung","Park","Hong","Cho","Yang","Bae","Oh","Seol"]},
+};
+// 地区取名池（供长尾国家共用；上面 12 个主流国保留各自专属名库）
+const NAME_POOLS = {
+  brazil:{f:["Gabriel","Lucas","Rodrigo","Bruno","Matheus","Caio","Igor","Joao"], l:["Silva","Santos","Souza","Costa","Ferreira","Almeida","Gomes","Rocha"]},
+  china:{f:["Wang","Li","Zhang","Liu","Chen","Yang","Huang","Wu","Zhao","Sun","Lin","Guo"], l:["Lei","Wei","Hao","Bin","Jun","Tao","Peng","Chao","Kai","Yong","Cheng","Long"]},
+  latin:{f:["Santiago","Mateo","Diego","Facundo","Agustin","Cristian","Sebastian","Emiliano","Brayan","Luis","Andres","Bruno"], l:["Gomez","Rojas","Vargas","Castro","Herrera","Suarez","Cardona","Mina","Moreno","Quintero","Ramirez","Torres"]},
+  mexico:{f:["Hirving","Raul","Edson","Santiago","Cesar","Jesus","Hector","Alexis","Carlos","Uriel","Roberto","Diego"], l:["Lozano","Jimenez","Alvarez","Gimenez","Montes","Corona","Vega","Antuna","Pineda","Sanchez","Herrera","Rodriguez"]},
+  usa:{f:["Christian","Tyler","Weston","Brenden","Gio","Tim","Sergino","Yunus","Ricardo","Josh","Folarin","Malik"], l:["Pulisic","Adams","McKennie","Aaronson","Reyna","Weah","Dest","Musah","Pepi","Sargent","Robinson","Balogun"]},
+  britIsles:{f:["Jack","Liam","Connor","Ryan","Sean","Aaron","Lewis","Dylan","Callum","Kieran","Scott","Finn"], l:["Murphy","Walsh","Kelly","Campbell","Doyle","McGrath","Robertson","Brady","Keane","Hendrick","Browne","Coleman"]},
+  germanic:{f:["Leon","Luca","Felix","Jonas","Paul","Tim","Noah","Elias","Lukas","Jan","David","Marco"], l:["Mueller","Schmid","Fischer","Weber","Wagner","Gruber","Hofer","Bauer","Steiner","Moser","Berger","Huber"]},
+  nordic:{f:["Erik","Magnus","Oskar","Henrik","Mikkel","Emil","Viktor","Anton","Kasper","Elias","Martin","Sander"], l:["Hansen","Johansson","Larsen","Berg","Nilsson","Andersen","Lindgren","Pedersen","Hojlund","Isak","Nusa","Solbakken"]},
+  eastEurope:{f:["Jakub","Tomas","Marek","Pavel","Andriy","Dmytro","Filip","Kacper","Igor","Ruslan","Mykhailo","Bohdan"], l:["Nowak","Kowalski","Novak","Shevchenko","Kovalenko","Dvorak","Zielinski","Krol","Mudryk","Sobol","Hladky","Lunin"]},
+  balkan:{f:["Luka","Marko","Nikola","Ivan","Stefan","Milan","Ante","Josip","Dusan","Filip","Andrej","Nemanja"], l:["Modric","Kovacic","Vlahovic","Maric","Petrovic","Jovic","Brozovic","Tadic","Mitrovic","Savic","Gvardiol","Sucic"]},
+  mideast:{f:["Ali","Mohammed","Omar","Hassan","Karim","Sardar","Mehdi","Salem","Yousef","Saud","Ahmed","Mahdi"], l:["Al-Dawsari","Taremi","Azmoun","Al-Shehri","Hassan","Jahanbakhsh","Kanno","Al-Owais","Ansarifard","Al-Najei","Hosseini","Cetin"]},
+  westAfrica:{f:["Samuel","Emmanuel","Mohamed","Ibrahim","Kwame","Kofi","Sadio","Victor","Thomas","Yves","Wilfried","Andre"], l:["Osimhen","Mendy","Mane","Partey","Sarr","Kone","Traore","Diallo","Boateng","Adebayo","Aurier","Ndidi"]},
+  northAfrica:{f:["Mohamed","Achraf","Hakim","Youssef","Riyad","Sofiane","Ismael","Amine","Walid","Bilal","Ramy","Nayef"], l:["Hakimi","Ziyech","Salah","Mahrez","Bounou","Saiss","Brahimi","Slimani","Trezeguet","Hamdallah","Aguerd","Amrabat"]},
+  seAsia:{f:["Chanathip","Supachai","Theerathon","Egy","Witan","Safawi","Asnawi","Teerasil","Quang","Cong","Van","Tuan"], l:["Songkrasin","Dangda","Bunmathan","Maulana","Pratama","Putra","Hai","Phuong","Hau","Linh","Manh","Hoang"]},
+  southAsia:{f:["Sunil","Sandesh","Gurpreet","Anirudh","Manvir","Sahal","Rahul","Ashique","Brandon","Liston","Apuia","Naorem"], l:["Chhetri","Jhingan","Sandhu","Thapa","Singh","Bheke","Colaco","Fernandes","Yadav","Kuruniyan","Mahato","Das"]},
+  oceania:{f:["Mathew","Jackson","Aaron","Harry","Riley","Connor","Marco","Craig","Ajdin","Garang","Keanu","Nathaniel"], l:["Ryan","Irvine","Mooy","Souttar","McGree","Hrustic","Tilio","Goodwin","Boyle","Kuol","Baccus","Atkinson"]},
+};
+const NATIONS_EXTRA = {
+  "克罗地亚":{flag:"🇭🇷",w:5,pool:"balkan"}, "塞尔维亚":{flag:"🇷🇸",w:4,pool:"balkan"},
+  "波兰":{flag:"🇵🇱",w:4,pool:"eastEurope"}, "乌克兰":{flag:"🇺🇦",w:4,pool:"eastEurope"},
+  "捷克":{flag:"🇨🇿",w:3,pool:"eastEurope"}, "俄罗斯":{flag:"🇷🇺",w:4,pool:"eastEurope"},
+  "瑞典":{flag:"🇸🇪",w:4,pool:"nordic"}, "挪威":{flag:"🇳🇴",w:4,pool:"nordic"},
+  "丹麦":{flag:"🇩🇰",w:4,pool:"nordic"}, "瑞士":{flag:"🇨🇭",w:3,pool:"germanic"},
+  "奥地利":{flag:"🇦🇹",w:3,pool:"germanic"}, "希腊":{flag:"🇬🇷",w:3,pool:"balkan"},
+  "土耳其":{flag:"🇹🇷",w:4,pool:"mideast"}, "爱尔兰":{flag:"🇮🇪",w:3,pool:"britIsles"},
+  "乌拉圭":{flag:"🇺🇾",w:5,pool:"latin"}, "哥伦比亚":{flag:"🇨🇴",w:5,pool:"latin"},
+  "智利":{flag:"🇨🇱",w:4,pool:"latin"}, "秘鲁":{flag:"🇵🇪",w:3,pool:"latin"},
+  "厄瓜多尔":{flag:"🇪🇨",w:3,pool:"latin"}, "巴拉圭":{flag:"🇵🇾",w:2,pool:"latin"},
+  "墨西哥":{flag:"🇲🇽",w:5,pool:"mexico"}, "美国":{flag:"🇺🇸",w:5,pool:"usa"},
+  "加拿大":{flag:"🇨🇦",w:3,pool:"usa"}, "哥斯达黎加":{flag:"🇨🇷",w:2,pool:"latin"},
+  "尼日利亚":{flag:"🇳🇬",w:5,pool:"westAfrica"}, "塞内加尔":{flag:"🇸🇳",w:5,pool:"westAfrica"},
+  "摩洛哥":{flag:"🇲🇦",w:5,pool:"northAfrica"}, "埃及":{flag:"🇪🇬",w:4,pool:"northAfrica"},
+  "阿尔及利亚":{flag:"🇩🇿",w:4,pool:"northAfrica"}, "加纳":{flag:"🇬🇭",w:4,pool:"westAfrica"},
+  "喀麦隆":{flag:"🇨🇲",w:4,pool:"westAfrica"}, "科特迪瓦":{flag:"🇨🇮",w:4,pool:"westAfrica"},
+  "突尼斯":{flag:"🇹🇳",w:3,pool:"northAfrica"}, "马里":{flag:"🇲🇱",w:3,pool:"westAfrica"},
+  "南非":{flag:"🇿🇦",w:2,pool:"westAfrica"},
+  "中国":{flag:"🇨🇳",w:6,pool:"china"},
+  "伊朗":{flag:"🇮🇷",w:4,pool:"mideast"}, "沙特阿拉伯":{flag:"🇸🇦",w:4,pool:"mideast"},
+  "澳大利亚":{flag:"🇦🇺",w:4,pool:"oceania"}, "卡塔尔":{flag:"🇶🇦",w:2,pool:"mideast"},
+  "伊拉克":{flag:"🇮🇶",w:2,pool:"mideast"}, "阿联酋":{flag:"🇦🇪",w:2,pool:"mideast"},
+  "乌兹别克斯坦":{flag:"🇺🇿",w:2,pool:"mideast"}, "泰国":{flag:"🇹🇭",w:2,pool:"seAsia"},
+  "越南":{flag:"🇻🇳",w:2,pool:"seAsia"}, "印度尼西亚":{flag:"🇮🇩",w:2,pool:"seAsia"},
+  "印度":{flag:"🇮🇳",w:2,pool:"southAsia"}, "新西兰":{flag:"🇳🇿",w:2,pool:"oceania"},
+};
+Object.assign(NATIONS, NATIONS_EXTRA);
+const NAT_KEYS = Object.keys(NATIONS);
+// 知名俱乐部"代称"（保留趣味，不死板对应）
+const RIVALS = [
+  {nick:"蓝月亮",   real:"曼城",     str:84, country:"英格兰"},
+  {nick:"银河战舰", real:"皇家马德里", str:85, country:"西班牙"},
+  {nick:"红军",     real:"利物浦",   str:83, country:"英格兰"},
+  {nick:"枪手",     real:"阿森纳",   str:81, country:"英格兰"},
+  {nick:"大黄蜂",   real:"多特蒙德", str:79, country:"德国"},
+  {nick:"红魔",     real:"曼联",     str:78, country:"英格兰"},
+  {nick:"斑马军团", real:"尤文图斯", str:79, country:"意大利"},
+];
+// 全球版图：各大洲主要足球国家（联赛实力基准 b）；阵容按需生成
+const WORLD_COUNTRIES=[
+  {n:"西班牙",c:"欧洲",b:80},{n:"英格兰",c:"欧洲",b:81},{n:"德国",c:"欧洲",b:79},{n:"意大利",c:"欧洲",b:78},
+  {n:"法国",c:"欧洲",b:77},{n:"葡萄牙",c:"欧洲",b:75},{n:"荷兰",c:"欧洲",b:74},{n:"比利时",c:"欧洲",b:72},
+  {n:"土耳其",c:"欧洲",b:71},{n:"克罗地亚",c:"欧洲",b:71},{n:"塞尔维亚",c:"欧洲",b:68},{n:"瑞士",c:"欧洲",b:69},
+  {n:"奥地利",c:"欧洲",b:67},{n:"丹麦",c:"欧洲",b:68},{n:"瑞典",c:"欧洲",b:67},{n:"挪威",c:"欧洲",b:68},
+  {n:"波兰",c:"欧洲",b:66},{n:"乌克兰",c:"欧洲",b:68},{n:"捷克",c:"欧洲",b:66},{n:"希腊",c:"欧洲",b:66},{n:"俄罗斯",c:"欧洲",b:68},
+  {n:"巴西",c:"南美",b:80},{n:"阿根廷",c:"南美",b:79},{n:"乌拉圭",c:"南美",b:72},{n:"哥伦比亚",c:"南美",b:71},
+  {n:"智利",c:"南美",b:68},{n:"秘鲁",c:"南美",b:65},{n:"厄瓜多尔",c:"南美",b:66},{n:"巴拉圭",c:"南美",b:64},
+  {n:"日本",c:"亚洲",b:73},{n:"韩国",c:"亚洲",b:72},{n:"沙特阿拉伯",c:"亚洲",b:73},{n:"中国",c:"亚洲",b:64},
+  {n:"澳大利亚",c:"亚洲",b:69},{n:"伊朗",c:"亚洲",b:70},{n:"卡塔尔",c:"亚洲",b:66},{n:"阿联酋",c:"亚洲",b:64},
+  {n:"伊拉克",c:"亚洲",b:63},{n:"乌兹别克斯坦",c:"亚洲",b:64},{n:"泰国",c:"亚洲",b:61},{n:"越南",c:"亚洲",b:60},{n:"印度尼西亚",c:"亚洲",b:59},{n:"印度",c:"亚洲",b:58},
+  {n:"墨西哥",c:"中北美",b:73},{n:"美国",c:"中北美",b:71},{n:"加拿大",c:"中北美",b:66},{n:"哥斯达黎加",c:"中北美",b:62},
+  {n:"埃及",c:"非洲",b:70},{n:"摩洛哥",c:"非洲",b:71},{n:"尼日利亚",c:"非洲",b:70},{n:"塞内加尔",c:"非洲",b:71},
+  {n:"阿尔及利亚",c:"非洲",b:69},{n:"加纳",c:"非洲",b:67},{n:"喀麦隆",c:"非洲",b:68},{n:"科特迪瓦",c:"非洲",b:68},
+  {n:"突尼斯",c:"非洲",b:67},{n:"马里",c:"非洲",b:64},{n:"南非",c:"非洲",b:62},
+  {n:"新西兰",c:"大洋洲",b:58},
+];
+// 开局俱乐部类型（决定初始阵容强度 / 建议资金 / 赛季目标）
+const ARCHETYPES = {
+  rich:    {name:"豪门",   short:"强阵·巨额预算", ovr:[76,84], stars:3, starOvr:[85,90], youth:0, budget:180, goalRank:1, desc:"顶级阵容（含 3 名 85+ 球星）+ 充裕转会金，但球迷只认冠军——目标联赛第 1，压力最大。"},
+  mid:     {name:"中游",   short:"均衡·稳步上升", ovr:[66,75], stars:1, starOvr:[78,83], youth:1, budget:65,  goalRank:5, desc:"中等阵容（1 名核心 + 1 名青训）与预算，目标稳扎稳打、进入上半区（前 5）。"},
+  rebuild: {name:"重建",   short:"弱旅·白手起家", ovr:[54,64], stars:0, starOvr:[0,0],   youth:3, budget:25,  goalRank:8, desc:"羸弱阵容（无球星，但有 3 名潜力新星）+ 拮据资金，靠球探、青训和交易逆袭——最硬核。"},
+};
+
+// ===== 联赛金字塔（D 阶段）=====
+const DIV_NAMES=["甲级联赛","乙级联赛"];
+const DIV_SIZE=10, PROMO=3;
+const CLUB_PRE=["北原","南海","东岭","西港","铁山","黑森","红河","青松","金狮","白鲨","狂风","巨岩","雷霆","苍鹰","怒涛","星辰","赤焰","寒霜","碧涛","飞龙","猎豹","海鸥","劲松","远征","雄狮","蓝鲸","赤龙","银翼","钢城","奥林","皇家","流浪者","联合","常胜","王朝","北辰","云岭","海港","烈日","苍穹","信天翁","开拓者","守望","破晓","磐石","旋风","极地","翡翠","琥珀","黑豹"];
+const CLUB_SUF=["FC","联","竞技","城","队","俱乐部","体育会","SC"];
+function genClubName(used){ let n,t=0; do{ n=pick(CLUB_PRE)+pick(CLUB_SUF); t++; }while(used.has(n)&&t<120); used.add(n); return n; }
+function mkClub(name, real, str, div, country, conf){ return {name, real, str:round1(clamp(str,50,90)), squad:null, tactic:pick(TACTIC_KEYS), country, conf, div, P:0,W:0,D:0,L:0,GF:0,GA:0,pts:0, you:false}; }
+function ensureSquad(c){ if(c && !c.you && !c.squad) c.squad=genRivalSquad(Math.round(c.str), NATIONS[c.country]?c.country:undefined); return c; }
+function buildWorld(){
+  const clubs=[];
+  WORLD_COUNTRIES.forEach(W=>{
+    const cu=new Set();
+    while(clubs.filter(c=>c.country===W.n&&c.div===0).length<DIV_SIZE) clubs.push(mkClub(flagOf(W.n)+genClubName(cu), null, W.b+rnd(-6,8), 0, W.n, W.c));
+    while(clubs.filter(c=>c.country===W.n&&c.div===1).length<DIV_SIZE) clubs.push(mkClub(flagOf(W.n)+genClubName(cu), null, W.b-9+rnd(-7,5), 1, W.n, W.c));
+  });
+  return clubs;
+}
+function leagueClubs(country, div){ return G.table.filter(c=>c.country===country && c.div===div); }
+function divClubs(d){ return leagueClubs(G.country, d); }
+function divIdxs(d){ const a=[]; G.table.forEach((c,i)=>{ if(c.country===G.country && c.div===d) a.push(i); }); return a; }
+function myDiv(){ const y=G.table.find(t=>t.you); return y?(y.div||0):0; }
+function countriesList(){ const s=[]; G.table.forEach(c=>{ if(!s.includes(c.country)) s.push(c.country); }); return s; }
+function flagOf(country){ return (NATIONS[country]&&NATIONS[country].flag)||"🏟️"; }
+function allLeagues(){ const m=new Map(); G.table.forEach(c=>{ const k=c.country+"|"+c.div; if(!m.has(k)) m.set(k,{country:c.country,div:c.div}); }); return [...m.values()]; }
+function makeDivSchedule(idxs){ const base=makeSchedule(idxs.length); const mapped=base.map(r=>r.map(pr=>[idxs[pr[0]],idxs[pr[1]]])); return mapped.concat(mapped); }
+function buildSchedules(){
+  G.leagueScheds=allLeagues().map(L=>{ const idxs=[]; G.table.forEach((c,i)=>{ if(c.country===L.country&&c.div===L.div) idxs.push(i); }); return {country:L.country, div:L.div, sched:makeDivSchedule(idxs)}; });
+  const mine=G.leagueScheds.find(s=>s.country===G.country && s.div===myDiv());
+  G.totalRounds=(mine&&mine.sched.length)||22;
+}
+function applyPromotionRelegation(){
+  const before=myDiv();
+  for(let d=0; d<DIV_NAMES.length-1; d++){
+    const lower=divClubs(d+1).sort(cmpTable), upper=divClubs(d).sort(cmpTable);
+    lower.slice(0,PROMO).forEach(c=>c.div=d);
+    upper.slice(upper.length-PROMO).forEach(c=>c.div=d+1);
+  }
+  const after=myDiv();
+  if(after<before){ const m=`🎉 升级！你的球队升入 ${DIV_NAMES[after]}！`; pushNews(m,"good"); return m; }
+  if(after>before){ const m=`⬇️ 降级：你的球队跌入 ${DIV_NAMES[after]}。`; pushNews(m,"bad"); return m; }
+  pushNews(`本赛季留在 ${DIV_NAMES[after]}。`,"match"); return "";
+}
+
+// ---------- 球员生成 ----------
+let _id=1;
+function fairValue(ovr,age){
+  const base = Math.pow(Math.max(ovr-45,4)/10, 3) * 1.6;
+  let af;
+  if(age<=20) af=1.34; else if(age<=23) af=1.24; else if(age<=27) af=1.12;
+  else if(age<=30) af=0.92; else if(age<=33) af=0.64; else af=0.40;
+  return Math.max(0.2, base*af);
+}
+function wageDemand(ovr){ return round2(Math.pow(Math.max(ovr-48,3),1.4)*0.0009); } // €M/轮
+function nameFor(nat){ const d=NATIONS[nat]; const pool=(d&&d.f)?d:(NAME_POOLS[d&&d.pool]||NAME_POOLS.brazil); return pick(pool.f)+" "+pick(pool.l); }
+function makeNat(){ const nat=weightedPick(NAT_KEYS.map(k=>[k,NATIONS[k].w])); return {nat, name:nameFor(nat)}; }
+function makePlayer(pos, opt){
+  // opt 可为数字(tierBoost，市场用) 或 {ovr,age,potBoost}(开局阵容用)
+  let tierBoost=0, ovrFix=null, ageFix=null, potBoost=0, natFix=null;
+  if(typeof opt==="number") tierBoost=opt;
+  else if(opt){ tierBoost=opt.tier||0; if(opt.ovr!=null) ovrFix=opt.ovr; if(opt.age!=null) ageFix=opt.age; potBoost=opt.potBoost||0; if(opt.nat) natFix=opt.nat; }
+  const age = ageFix!=null ? ageFix : rint(17,35);
+  let ovr = ovrFix!=null ? clamp(Math.round(ovrFix),42,93)
+    : clamp(Math.round(rnd(57,79) + (Math.random()<0.18? rnd(4,13):0) + tierBoost), 48, 92);
+  // 潜力：越年轻空间越大，偶有妖人
+  let potExtra;
+  if(age<=18) potExtra=rint(2,20); else if(age<=20) potExtra=rint(1,15);
+  else if(age<=23) potExtra=rint(0,9); else if(age<=26) potExtra=rint(0,4); else potExtra=0;
+  potExtra += potBoost;
+  const potential = clamp(ovr+potExtra, ovr, 99);
+  const formIdx = rint(0,4);
+  const nat = (natFix&&NATIONS[natFix])?natFix:weightedPick(NAT_KEYS.map(k=>[k,NATIONS[k].w]));
+  const name = nameFor(nat);
+  const fv = fairValue(ovr,age)*FORMS[formIdx].mult;
+  return {
+    id:_id++, name, nat, pos, age, ovr, potential,
+    potEst: clamp(potential+rint(-7,7), ovr, 99), // 未侦察时的模糊估计
+    scouted:false,
+    formIdx, injured:0, apps:0,
+    value: round1(fv*rnd(0.9,1.12)),
+    owned:false, buyPrice:0, starter:false,
+    wage:0, contractYears:0,
+  };
+}
+const isWonder = p => p.age<=20 && p.potential>=85;
+function mkFreeMaybe(p){ const base = p.age>=30?0.6 : p.age>=27?0.35 : 0.15; p.free = Math.random()<base; return p; }
+
+// ---------- 游戏状态 ----------
+let G = null;
+let pendingDeal = null;       // 还价暂存
+let setupCfg = {arch:"mid", budget:65};  // 开局设定暂存
+const SAVE_KEY = "soccerTransferSim_v6";
+
+function newGame(world, clubIdx, budget){
+  _id=1;
+  const table=world;
+  const you=table[clubIdx];
+  you.you=true; you.tactic="平衡";
+  const myConf=you.conf, myCountry=you.country, myD=you.div, s=you.str;
+  // 围绕俱乐部实力生成你的班底（国籍偏向本国）
+  const squad=[];
+  const plan=["GK","GK","DF","DF","DF","DF","MF","MF","MF","MF","FW","FW","FW","FW"];
+  const oi=shuffle([...Array(plan.length).keys()].filter(i=>i>=2));
+  const starSet=new Set(oi.slice(0,2)), youthSet=new Set(oi.slice(2,3));
+  const homeNat=NATIONS[myCountry]?myCountry:undefined;
+  plan.forEach((pos,i)=>{
+    let pl;
+    if(starSet.has(i))       pl=makePlayer(pos,{ovr:Math.round(s+rnd(2,6)), age:rint(24,29), nat:homeNat});
+    else if(youthSet.has(i)) pl=makePlayer(pos,{ovr:Math.round(clamp(s-8,48,90)), age:rint(16,18), potBoost:rint(10,20), nat:homeNat});
+    else                     pl=makePlayer(pos,{ovr:Math.round(s+rnd(-6,2)), age:rint(20,33), nat:(homeNat&&Math.random()<0.6?homeNat:undefined)});
+    pl.owned=true; pl.buyPrice=pl.value; pl.scouted=true; pl.wage=wageDemand(pl.ovr); pl.contractYears=rint(2,4);
+    squad.push(pl);
+  });
+  const market=[];
+  for(let i=0;i<32;i++) market.push(mkFreeMaybe(makePlayer(pick(POS), Math.random()<0.25? rnd(3,9):0)));
+  const goalRank = s>=80?1 : s>=74?3 : s>=68?6 : 9;
+
+  G={
+    club:you.name, archetype:"club", goalRank,
+    season:1, round:1, totalRounds:18,
+    cash:round1(budget), squad, market, table, news:[], tab:"squad",
+    marketFilterPos:"ALL", marketFilterText:"", selRival:0,
+    country:myCountry, conf:myConf,
+    leagueViewDiv:myD, leagueViewCountry:myCountry, leagueViewConf:myConf, rivalViewCountry:myCountry, rivalViewConf:myConf,
+    scoutCapacity:2, scoutFee:0.15, scoutQueue:[],
+    coachLevel:1, trainSlots:3, training:[],
+    formation:"4-3-3", tactic:"平衡", lineup:[], _sel:null,
+    offers:[], academy:{level:1, prospects:[], targetNat:null},
+    rep:50, sponsors:[], sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual"},
+    conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
+    cup:null, midweekDone:false,
+    lastWageBill:0, finished:false,
+  };
+  buildSchedules();
+  divClubs(myD).forEach(ensureSquad);              // 同区对手生成完整阵容
+  startCup();
+  rivalClubs().forEach(c=>{ if(c.squad) c.str=round1(clubStr(c)); });
+  autoLineup();
+  generateIntake(); genSponsorOffers(); genNTInvites();
+  pushNews(`欢迎来到 ${flagOf(myCountry)}${myCountry} · <b>${you.name}</b>（${DIV_NAMES[myD]||'联赛'}）！启动资金 ${eur(round1(budget))}，目标联赛前 ${goalRank} 名。`,"good");
+  save();
+}
+
+function makeSchedule(n){
+  const teams=[...Array(n).keys()]; if(n%2) teams.push(-1);
+  const m=teams.length, rounds=[]; let arr=[...teams];
+  for(let r=0;r<m-1;r++){
+    const pairs=[];
+    for(let i=0;i<m/2;i++){ const a=arr[i],b=arr[m-1-i]; if(a!==-1&&b!==-1) pairs.push([a,b]); }
+    rounds.push(pairs); arr.splice(1,0,arr.pop());
+  }
+  return rounds;
+}
+
+// ---------- 阵容 / 球场 ----------
+const FORMATIONS = {
+  "4-3-3":  {slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:16,y:70},{pos:"DF",x:38,y:73},{pos:"DF",x:62,y:73},{pos:"DF",x:84,y:70},{pos:"MF",x:27,y:49},{pos:"MF",x:50,y:52},{pos:"MF",x:73,y:49},{pos:"FW",x:22,y:24},{pos:"FW",x:50,y:20},{pos:"FW",x:78,y:24}]},
+  "4-4-2":  {slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:16,y:70},{pos:"DF",x:38,y:73},{pos:"DF",x:62,y:73},{pos:"DF",x:84,y:70},{pos:"MF",x:16,y:48},{pos:"MF",x:38,y:50},{pos:"MF",x:62,y:50},{pos:"MF",x:84,y:48},{pos:"FW",x:38,y:22},{pos:"FW",x:62,y:22}]},
+  "4-2-3-1":{slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:16,y:72},{pos:"DF",x:38,y:74},{pos:"DF",x:62,y:74},{pos:"DF",x:84,y:72},{pos:"MF",x:36,y:58},{pos:"MF",x:64,y:58},{pos:"MF",x:22,y:38},{pos:"MF",x:50,y:36},{pos:"MF",x:78,y:38},{pos:"FW",x:50,y:18}]},
+  "3-5-2":  {slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:28,y:72},{pos:"DF",x:50,y:74},{pos:"DF",x:72,y:72},{pos:"MF",x:12,y:52},{pos:"MF",x:33,y:50},{pos:"MF",x:50,y:53},{pos:"MF",x:67,y:50},{pos:"MF",x:88,y:52},{pos:"FW",x:38,y:22},{pos:"FW",x:62,y:22}]},
+  "4-1-4-1":{slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:16,y:71},{pos:"DF",x:38,y:73},{pos:"DF",x:62,y:73},{pos:"DF",x:84,y:71},{pos:"MF",x:50,y:59},{pos:"MF",x:16,y:43},{pos:"MF",x:38,y:42},{pos:"MF",x:62,y:42},{pos:"MF",x:84,y:43},{pos:"FW",x:50,y:20}]},
+  "4-5-1":  {slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:16,y:71},{pos:"DF",x:38,y:73},{pos:"DF",x:62,y:73},{pos:"DF",x:84,y:71},{pos:"MF",x:12,y:49},{pos:"MF",x:31,y:51},{pos:"MF",x:50,y:50},{pos:"MF",x:69,y:51},{pos:"MF",x:88,y:49},{pos:"FW",x:50,y:22}]},
+  "3-4-3":  {slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:28,y:72},{pos:"DF",x:50,y:74},{pos:"DF",x:72,y:72},{pos:"MF",x:18,y:50},{pos:"MF",x:40,y:52},{pos:"MF",x:60,y:52},{pos:"MF",x:82,y:50},{pos:"FW",x:22,y:24},{pos:"FW",x:50,y:20},{pos:"FW",x:78,y:24}]},
+  "5-3-2":  {slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:10,y:70},{pos:"DF",x:30,y:73},{pos:"DF",x:50,y:74},{pos:"DF",x:70,y:73},{pos:"DF",x:90,y:70},{pos:"MF",x:30,y:50},{pos:"MF",x:50,y:52},{pos:"MF",x:70,y:50},{pos:"FW",x:38,y:24},{pos:"FW",x:62,y:24}]},
+  "5-4-1":  {slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:10,y:70},{pos:"DF",x:30,y:73},{pos:"DF",x:50,y:74},{pos:"DF",x:70,y:73},{pos:"DF",x:90,y:70},{pos:"MF",x:16,y:49},{pos:"MF",x:38,y:51},{pos:"MF",x:62,y:51},{pos:"MF",x:84,y:49},{pos:"FW",x:50,y:22}]},
+  "4-3-1-2":{slots:[{pos:"GK",x:50,y:88},{pos:"DF",x:16,y:71},{pos:"DF",x:38,y:73},{pos:"DF",x:62,y:73},{pos:"DF",x:84,y:71},{pos:"MF",x:50,y:60},{pos:"MF",x:26,y:48},{pos:"MF",x:74,y:48},{pos:"MF",x:50,y:36},{pos:"FW",x:38,y:20},{pos:"FW",x:62,y:20}]},
+};
+const OOP_PENALTY = 0.85;  // 非自然位置效率折扣（-15%）
+let dragData = null;       // 拖拽暂存
+
+const TACTICS = {
+  "平衡":     {desc:"攻守均衡、稳定，无特殊加成。"},
+  "边路传中": {desc:"依赖边路球员（边锋/边卫）。边路阵容越强，进攻加成越高（最高 +15%）。"},
+  "中路渗透": {desc:"短传渗透，依赖中路中场。中场越强，进攻加成越高（最高 +15%）。"},
+  "长传冲吊": {desc:"绕过中场直接找前锋。前锋越强，进攻加成越高（最高 +15%）。适合中场偏弱时。"},
+  "防守反击": {desc:"防守 +8%；面对更强的对手时，进攻获得额外反击加成。"},
+  "高位压迫": {desc:"攻防各 +6%，但比赛变数更大（双方进球都更多）。"},
+};
+const TACTIC_KEYS = Object.keys(TACTICS);
+// 战术相克（轻微）：key 克制 value
+const TACTIC_BEATS = { "防守反击":"高位压迫", "高位压迫":"中路渗透", "边路传中":"防守反击", "中路渗透":"长传冲吊", "长传冲吊":"高位压迫" };
+
+function slots(){ return (FORMATIONS[G.formation]||FORMATIONS["4-3-3"]).slots; }
+function inLineup(id){ return Array.isArray(G.lineup) && G.lineup.includes(id); }
+function syncStarters(){ G.squad.forEach(p=>p.starter=inLineup(p.id)); }
+function sanitizeLineup(){
+  if(!FORMATIONS[G.formation]) G.formation="4-3-3";
+  const ss=slots();
+  if(!Array.isArray(G.lineup)) G.lineup=[];
+  G.lineup.length=ss.length;
+  const seen=new Set();
+  for(let i=0;i<ss.length;i++){
+    const id=G.lineup[i];
+    const p=(id!=null)&&G.squad.find(x=>x.id===id);
+    if(!p||p.injured||seen.has(id)) G.lineup[i]=null; else seen.add(id);
+  }
+  syncStarters();
+}
+function starters(){ return G.squad.filter(p=>p.starter && !p.injured); }
+function teamRatings(){
+  const ss=slots(); const eff=[]; let cnt=0, hasGK=false;
+  ss.forEach((s,i)=>{
+    const id=G.lineup?G.lineup[i]:null; if(id==null) return;
+    const p=G.squad.find(x=>x.id===id); if(!p||p.injured) return;
+    cnt++; if(s.pos==="GK") hasGK=true;
+    eff.push({role:s.pos, x:s.x, val:p.ovr*FORMS[p.formIdx].mult*(p.pos===s.pos?1:OOP_PENALTY)});
+  });
+  const mean=arr=>arr.length? arr.reduce((s,e)=>s+e.val,0)/arr.length:0;
+  const avg=role=>mean(eff.filter(e=>e.role===role));
+  const att=avg("FW")*0.6+avg("MF")*0.4;
+  const def=avg("DF")*0.65+avg("GK")*0.35;
+  const ovr=eff.length? eff.reduce((s,e)=>s+e.val,0)/eff.length : 0;
+  const wideEff=mean(eff.filter(e=>(e.role==="FW"||e.role==="MF")&&(e.x<30||e.x>70)));
+  const centralEff=mean(eff.filter(e=>e.role==="MF"&&e.x>=35&&e.x<=65));
+  const fwEff=mean(eff.filter(e=>e.role==="FW"));
+  return {att:att||40, def:def||40, ovr:ovr||40, count:cnt, hasGK, wideEff, centralEff, fwEff};
+}
+function tacticMods(r, oppStr){
+  const t=G.tactic||"平衡"; let att=1, def=1, note="平衡";
+  const sign=b=>(b>=0?"+":"")+Math.round(b*100)+"%";
+  if(t==="边路传中"){ const b=clamp((r.wideEff-70)/100,-0.1,0.15); att=1+b; note=`边路传中 ${sign(b)}`; }
+  else if(t==="中路渗透"){ const b=clamp((r.centralEff-70)/100,-0.1,0.15); att=1+b; note=`中路渗透 ${sign(b)}`; }
+  else if(t==="长传冲吊"){ const b=clamp((r.fwEff-70)/100,-0.1,0.15); att=1+b; note=`长传冲吊 ${sign(b)}`; }
+  else if(t==="防守反击"){ def=1.08; const b=clamp((oppStr-r.ovr)/100,0,0.15); att=1+b; note=`防守反击 防+8%${b>0?` 反击+${Math.round(b*100)}%`:""}`; }
+  else if(t==="高位压迫"){ att=1.06; def=1.06; note="高位压迫 攻防+6%"; }
+  return {att, def, note};
+}
+function autoLineup(){
+  const ss=slots(); G.lineup=new Array(ss.length).fill(null);
+  const used=new Set();
+  const avail=G.squad.filter(p=>!p.injured).sort((a,b)=>b.ovr-a.ovr);
+  ss.forEach((s,i)=>{ const c=avail.find(p=>!used.has(p.id)&&p.pos===s.pos); if(c){ G.lineup[i]=c.id; used.add(c.id);} });
+  ss.forEach((s,i)=>{ if(G.lineup[i]==null){ const c=avail.find(p=>!used.has(p.id)); if(c){ G.lineup[i]=c.id; used.add(c.id);} } });
+  syncStarters();
+}
+function setFormation(f){ if(!FORMATIONS[f]) return; G.formation=f; autoLineup(); save(); render(); }
+function setTactic(t){ if(!TACTICS[t]) return; G.tactic=t; save(); render(); }
+function placeInLineup(id, slotIdx){
+  const p=G.squad.find(x=>x.id===id); if(!p||p.injured) return;
+  const cur=G.lineup.indexOf(id), occupant=G.lineup[slotIdx];
+  if(cur>=0) G.lineup[cur]=occupant;   // 场内移动 → 与目标位互换
+  G.lineup[slotIdx]=id;                 // 从替补席来 → 顶替者回替补席
+  syncStarters(); save(); render();
+}
+function removeFromLineup(id){ if(!Array.isArray(G.lineup)) return; const i=G.lineup.indexOf(id); if(i>=0){ G.lineup[i]=null; syncStarters(); } }
+function dropOnSlot(i){
+  if(!dragData) return;
+  if(dragData.from==="bench") placeInLineup(dragData.id,i);
+  else { const a=dragData.slot, t=G.lineup[i]; G.lineup[i]=G.lineup[a]; G.lineup[a]=t; syncStarters(); save(); render(); }
+  dragData=null;
+}
+function dropOnBench(){ if(dragData&&dragData.from==="slot"){ G.lineup[dragData.slot]=null; syncStarters(); save(); render(); } dragData=null; }
+function clickBench(id){ G._sel=(G._sel===id?null:id); render(); }
+function clickSlot(i){
+  if(G._sel!=null){ placeInLineup(G._sel,i); G._sel=null; }
+  else if(G.lineup[i]!=null){ removeFromLineup(G.lineup[i]); save(); render(); }
+}
+function wageBill(){ return round2(G.squad.reduce((a,p)=>a+(p.wage||0),0)); }
+
+// ---------- 俱乐部 / 球员检索 ----------
+function rivalClubs(){ return G.table.filter(t=>!t.you); }
+function allPlayers(){ const a=[...G.squad,...G.market]; rivalClubs().forEach(c=>{ if(c.squad) a.push(...c.squad); }); return a; }
+function findPlayer(id){ return allPlayers().find(p=>p.id===id) || (G.academy && G.academy.prospects.find(p=>p.id===id)) || null; }
+function clubOf(id){ for(const c of rivalClubs()){ if(c.squad && c.squad.some(p=>p.id===id)) return c; } return null; }
+function clubStr(club){
+  if(club.you) return teamRatings().ovr;
+  if(!club.squad||!club.squad.length) return club.str||75;
+  const best=[...club.squad].sort((a,b)=>b.ovr-a.ovr).slice(0,11);
+  return best.reduce((s,p)=>s+p.ovr*FORMS[p.formIdx].mult,0)/best.length;
+}
+function isKeyPlayer(club,p){
+  if(!club.squad) return false;
+  return [...club.squad].sort((a,b)=>b.ovr-a.ovr).slice(0,11).some(x=>x.id===p.id);
+}
+function genRivalSquad(targetStr, nat){
+  const plan=["GK","GK","DF","DF","DF","DF","DF","MF","MF","MF","MF","MF","FW","FW","FW","FW"];
+  const out=[]; const outIdx=shuffle([...Array(plan.length).keys()].filter(i=>i>=2));
+  const starSet=new Set(outIdx.slice(0,2));
+  plan.forEach((pos,i)=>{
+    const ovr = starSet.has(i)? Math.round(targetStr+rnd(2,6)) : Math.round(targetStr+rnd(-9,2));
+    const useNat = (nat && NATIONS[nat] && Math.random()<0.7) ? nat : undefined;
+    const pl=makePlayer(pos,{ovr:clamp(ovr,50,92), age:rint(19,33), nat:useNat});
+    pl.scouted=true;
+    out.push(pl);
+  });
+  return out;
+}
+
+// ---------- 推进一轮 ----------
+function nextRound(){
+  if(G.finished) return;
+  const r=teamRatings();
+  if(r.count!==11){ toast(`需要恰好 11 名首发（当前 ${r.count} 人）`); switchTab("squad"); return; }
+  if(!r.hasGK){ toast("首发必须包含 1 名门将"); switchTab("squad"); return; }
+
+  const youIdx=G.table.findIndex(t=>t.you);
+  const myD=myDiv();
+  const roundIdx=(G.round-1)%G.totalRounds;
+  const myLeague=G.leagueScheds.find(s=>s.country===G.country && s.div===myD);
+  const myPairs=(myLeague?myLeague.sched[roundIdx]:[])||[];
+  let myPair=myPairs.find(p=>p[0]===youIdx||p[1]===youIdx);
+  let oppIdx, oppHome=true;
+  if(myPair){ oppIdx=myPair[0]===youIdx?myPair[1]:myPair[0]; oppHome=myPair[1]===youIdx; }
+  else oppIdx=divIdxs(myD).find(i=>i!==youIdx);
+  const opp=G.table[oppIdx];
+
+  const oppStr=clubStr(opp);
+  const tm=tacticMods(r, oppStr);
+  let myAtt=r.att*tm.att, myDef=r.def*tm.def, oppAtt=oppStr, oppDef=oppStr;
+  const oppTac=opp.tactic||"平衡"; let rps="";
+  if(TACTIC_BEATS[G.tactic||"平衡"]===oppTac){ myAtt*=1.05; rps=`战术克制 ${oppTac}`; }
+  else if(TACTIC_BEATS[oppTac]===(G.tactic||"平衡")){ oppAtt*=1.05; rps=`被 ${oppTac} 克制`; }
+  let myXG=clamp((myAtt-oppDef)/9+1.35,0.18,5.2);
+  let opXG=clamp((oppAtt-myDef)/9+1.35,0.18,5.2);
+  if((G.tactic||"平衡")==="高位压迫"){ myXG*=1.06; opXG*=1.10; } // 高位压迫=高变数
+  if(oppHome) myXG*=1.08; else opXG*=1.08;
+  const tacInfo=`你: ${tm.note}${rps?` · ${rps}`:""} ｜ 对手: ${oppTac}`;
+  const mg=samplePoisson(myXG), og=samplePoisson(opXG);
+  applyResult(youIdx,oppIdx,mg,og);
+  creditGoals(starters(), mg); if(opp.squad) creditGoals(opp.squad, og);
+  const res=mg>og?"W":mg<og?"L":"D";
+  const prize=res==="W"?2.5:res==="D"?0.9:0.2;
+  G.cash=round1(G.cash+prize);
+
+  // 出场记录（首发本轮 +1 app，用于成长）
+  starters().forEach(p=>p.apps++);
+
+  // 全世界各国联赛同步进行，模拟其它所有比赛
+  G.leagueScheds.forEach(L=>{
+    const pairs=(L.sched[roundIdx])||[];
+    pairs.forEach(pr=>{
+      if(L.country===G.country && L.div===myD && (pr[0]===youIdx||pr[1]===youIdx)) return;
+      const A=G.table[pr[0]],B=G.table[pr[1]]; const aS=clubStr(A),bS=clubStr(B);
+      const ag=samplePoisson(clamp((aS-bS)/9+1.4,0.2,5)), bg=samplePoisson(clamp((bS-aS)/9+1.4,0.2,5));
+      applyResult(pr[0],pr[1],ag,bg);
+      if(L.country===G.country && L.div===myD){ if(A.squad) creditGoals(A.squad,ag); if(B.squad) creditGoals(B.squad,bg); }
+    });
+  });
+
+  evolveMarket();
+  resolveScouts();
+  aiTransfers();
+
+  // 工资支出
+  const wb=round2(wageBill()+loanWageBill()); const inc=sponsorIncome(); G.lastWageBill=wb; G.cash=round1(G.cash-wb+inc);
+
+  const resTxt=res==="W"?"赢球":res==="L"?"输球":"战平";
+  pushNews(`<b>${G.club} ${mg}-${og} ${opp.name}</b> · ${resTxt}，奖金 +${eur(prize)}；工资支出 -${eur(wb)}`,"match");
+  if(G.cash<0) pushNews(`⚠️ 现金为负（${eur(G.cash)}）！工资压力过大，尽快卖人回血。`,"bad");
+
+  G.round++;
+  const _mid=Math.ceil(G.totalRounds/2);
+  if(G.round-1===_mid && G.academy){ generateIntake(); pushNews(`🌱 年中青训营开营，迎来一批新苗子（学院 Lv.${G.academy.level}）。`,"good"); }
+  if(G.round>G.totalRounds){ endSeason(); }
+  G.squad.forEach(p=>{ if(p.injured&&p.starter) p.starter=false; });
+  save(); render();
+  if(!G.finished) showMatchModal(opp.name,mg,og,res,prize,wb,tacInfo);
+}
+function applyResult(i,j,gi,gj){
+  const A=G.table[i],B=G.table[j];
+  A.P++;B.P++;A.GF+=gi;A.GA+=gj;B.GF+=gj;B.GA+=gi;
+  if(gi>gj){A.W++;B.L++;A.pts+=3;} else if(gi<gj){B.W++;A.L++;B.pts+=3;} else{A.D++;B.D++;A.pts++;B.pts++;}
+}
+
+// 市场演化
+function evolveMarket(){
+  const all=allPlayers();
+  all.forEach(p=>{
+    if(p.injured>0) p.injured--;
+    if(Math.random()<0.45) p.formIdx=clamp(p.formIdx+(Math.random()<0.5?-1:1),0,4);
+    if(p.injured===0 && Math.random()<0.04){ p.injured=rint(1,3); p.formIdx=clamp(p.formIdx-1,0,4); }
+    const fair=fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult*(p.injured?0.78:1);
+    p.value=round1(clamp((p.value*0.55+fair*0.45)*rnd(0.96,1.05),0.15,9999));
+  });
+  for(let k=0,n=rint(1,2);k<n;k++){
+    const p=pick(all), e=Math.random();
+    if(e<0.33){ p.formIdx=4; p.value=round1(p.value*rnd(1.12,1.28));
+      pushNews(`🔥 <b>${p.name}</b>（${POS_CN[p.pos]}）状态爆棚，身价飙升至 ${eur(p.value)}！`,"good");
+    } else if(e<0.6){ p.injured=rint(2,4); p.value=round1(p.value*rnd(0.72,0.85)); p.formIdx=clamp(p.formIdx-2,0,4);
+      pushNews(`🤕 <b>${p.name}</b> 遭遇伤病（${p.injured}轮），身价跌至 ${eur(p.value)}。`,"bad");
+    } else { const up=Math.random()<0.6; p.value=round1(p.value*(up?rnd(1.06,1.15):rnd(0.88,0.96)));
+      pushNews(`📣 <b>${p.name}</b> 传出转会绯闻，身价${up?"上涨":"下滑"}至 ${eur(p.value)}。`,up?"good":"bad");
+    }
+  }
+  if(Math.random()<0.6){
+    G.market.sort(()=>Math.random()-0.5);
+    const out=rint(1,2); G.market.splice(0,out);
+    for(let i=0;i<out;i++) G.market.push(mkFreeMaybe(makePlayer(pick(POS), Math.random()<0.2?rnd(3,8):0)));
+  }
+}
+
+// 对手转会活动：抢人 / 报价你的球员 / 挂牌出售
+function aiTransfers(){
+  const rivals=rivalClubs().filter(c=>c.squad);   // 仅已生成阵容的俱乐部参与转会
+  if(!rivals.length) return;
+  // 1) 对手从市场签人（抢你的目标，真实进入对手阵容）
+  let signings=rint(0,2);
+  for(let s=0;s<signings;s++){
+    const club=pick(rivals); if(club.squad.length>=22) continue;
+    const cs=clubStr(club);
+    const targets=G.market.filter(p=>p.ovr>=cs-2 && !p.injured).sort((a,b)=>b.ovr-a.ovr);
+    if(!targets.length) continue;
+    const p=targets[rint(0,Math.min(4,targets.length-1))];
+    const i=G.market.findIndex(x=>x.id===p.id); if(i<0) continue;
+    const fee=round1(askingFee(p));
+    G.market.splice(i,1);
+    G.scoutQueue=G.scoutQueue.filter(q=>q.id!==p.id);
+    club.squad.push(p);
+    G.market.push(mkFreeMaybe(makePlayer(pick(POS), Math.random()<0.2?rnd(3,8):0)));
+    pushNews(`🔻 <b>${club.name}</b> 抢先签下 <b>${p.name}</b>（${p.ovr}评分，${eur(fee)}）。`,"bad");
+  }
+  // 2) 对手挂牌出售（把自己阵容里的边缘球员真实地放进市场）
+  if(Math.random()<0.55){
+    const club=pick(rivals);
+    if(club.squad.length>15){
+      const fringe=[...club.squad].sort((a,b)=>a.ovr-b.ovr).slice(0, club.squad.length-11);
+      if(fringe.length){
+        const p=pick(fringe);
+        const idx=club.squad.findIndex(x=>x.id===p.id); club.squad.splice(idx,1);
+        p.free=false;
+        G.market.unshift(p);
+        pushNews(`🔄 <b>${club.name}</b> 挂牌出售 <b>${p.name}</b>（${p.ovr}评分），已进入转会市场。`,"match");
+      }
+    }
+  }
+  // 3) 对手报价你的球员（先清理过期/已离队的报价）
+  G.offers=(G.offers||[]).filter(o=>{
+    o.expires--;
+    if(o.expires<=0){ pushNews(`⌛ ${o.fromClub} 对 ${o.playerName} 的报价已过期。`,"match"); return false; }
+    return G.squad.some(p=>p.id===o.playerId);
+  });
+  let candidates=G.squad.filter(p=>!G.offers.some(o=>o.playerId===p.id));
+  let nOffers=(Math.random()<0.5?1:0)+(Math.random()<0.2?1:0);
+  for(let k=0;k<nOffers && candidates.length;k++){
+    candidates.sort((a,b)=>(b.value*(1+(b.formIdx-2)*0.05))-(a.value*(1+(a.formIdx-2)*0.05)));
+    const idx=rint(0,Math.min(3,candidates.length-1));
+    const p=candidates[idx]; candidates.splice(idx,1);
+    const club=pick(rivals);
+    const amount=round1(p.value*rnd(0.95,1.45)*(1+(p.formIdx-2)*0.06));
+    G.offers.push({playerId:p.id, playerName:p.name, fromClub:club.name, amount, expires:2});
+    pushNews(`📨 <b>${club.name}</b> 报价 <b>${eur(amount)}</b> 求购你的 <b>${p.name}</b>（身价 ${eur(p.value)}）。`,"good");
+  }
+  // 市场上限，避免无限膨胀
+  while(G.market.length>46){ G.market.sort((a,b)=>a.value-b.value); G.market.shift(); }
+  rivals.forEach(c=>c.str=round1(clubStr(c)));
+}
+
+// 球探队列推进
+function resolveScouts(){
+  const done=[];
+  G.scoutQueue.forEach(s=>{ s.roundsLeft--; if(s.roundsLeft<=0) done.push(s.id); });
+  G.scoutQueue=G.scoutQueue.filter(s=>s.roundsLeft>0);
+  done.forEach(id=>{
+    const p=findPlayer(id);
+    if(p){ p.scouted=true;
+      pushNews(`🔭 球探报告：<b>${p.name}</b>（${p.age}岁 ${POS_CN[p.pos]}）潜力 <b>${p.potential}</b>${isWonder(p)?" — ⭐妖人！":""}`,"scout");
+    }
+  });
+}
+
+function endSeason(){
+  const finishDiv=myDiv();
+  const sorted=divClubs(finishDiv).sort(cmpTable);
+  const rank=sorted.findIndex(t=>t.you)+1;
+  const bonus=round1((rank===1?30:rank===2?18:rank===3?10:rank<=5?4:1)*(myDiv()===0?1.4:0.75));
+  const transferBudget=round1((9-Math.min(rank,8))*rnd(3,6) + G.rep*0.2);
+  G.rep=clamp(G.rep + (rank===1?10:rank<=3?6:rank<=G.goalRank?3:-2), 0, 100);
+  G.cash=round1(G.cash+bonus+transferBudget);
+  pushNews(`💰 下赛季董事会拨款：联赛奖金 ${eur(bonus)} + 转会预算 ${eur(transferBudget)}（当前声望 ${Math.round(G.rep)}）。`,"good");
+  const metGoal = rank<=G.goalRank;
+  pushNews(`🏁 第 ${G.season} 赛季结束！最终第 ${rank} 名（目标前 ${G.goalRank}）— ${metGoal?"达成预期 ✅":"未达预期 ⚠️"}，赛季奖金 +${eur(bonus)}。`, metGoal?"good":"bad");
+
+  // 成长 / 衰退：出场时间 × 球队战绩 × 训练
+  const teamFactor = rank<=2?1.20 : rank<=4?1.05 : rank<=6?0.95 : 0.85;
+  allPlayers().forEach(p=>{
+    p.age++;
+    const gap=p.potential-p.ovr;
+    const inT = p.owned && G.training.includes(p.id);
+    const trainGrow = inT ? (0.6 + G.coachLevel*0.35) : 0;            // 训练带来的额外成长点
+    const playFactor = p.owned ? clamp(0.4+p.apps/G.totalRounds,0.4,1.4) : 1.0;
+    const tf = p.owned ? teamFactor : 1.0;
+    if(p.age<=23 && gap>0){
+      const g=Math.round(gap*rnd(0.12,0.30)*playFactor*tf + trainGrow*rnd(1,2.4));
+      p.ovr=clamp(p.ovr+clamp(g,0,gap),48,99);
+    } else if(p.age<=27 && gap>0){
+      if(Math.random()<0.45+(inT?0.3:0)) p.ovr=clamp(p.ovr+rint(0,2)+(inT?1:0),48,99);
+    } else if(p.age>=30){
+      let dec=rint(0,3);
+      if(inT) dec=Math.max(0, dec-(G.coachLevel>=2?2:1));            // 训练减缓衰退
+      p.ovr=clamp(p.ovr-dec,42,99);
+    }
+    p.apps=0; p.gls=0; p.ast=0;
+    p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
+    if(p.owned) p.wage=wageDemand(p.ovr); // 涨薪
+  });
+
+  // 合同 -1，到期处理
+  const leaving=[];
+  G.squad.forEach(p=>{
+    p.contractYears--;
+    if(p.contractYears<=0){
+      if(G.squad.length-leaving.length>11) leaving.push(p.id);
+      else p.contractYears=1; // 人数不足，自动续 1 年
+    }
+  });
+  leaving.forEach(id=>{
+    const i=G.squad.findIndex(p=>p.id===id); if(i<0) return;
+    const p=G.squad[i]; p.owned=false; p.starter=false; p.wage=0; p.free=true; untrain(id); removeFromLineup(id);
+    G.market.unshift(p); G.squad.splice(i,1);
+    pushNews(`📄 <b>${p.name}</b> 合同到期，自由身离队。`,"bad");
+  });
+
+  // 青训学院：苗子成长、毕业（19岁离队）、新一批入学
+  if(G.academy){
+    G.academy.prospects.forEach(p=>{ p.age++; const gap=p.potential-p.ovr; if(gap>0) p.ovr=clamp(p.ovr+Math.round(gap*rnd(0.15,0.35)),44,99); });
+    G.academy.prospects=G.academy.prospects.filter(p=>p.age<=18);
+    generateIntake();
+    pushNews(`🌱 赛季末青训营：新一批苗子入营（学院 Lv.${G.academy.level}）。`,"good");
+  }
+  // 租借球员归队（获得成长）
+  if(G.loans && G.loans.length){
+    G.loans.forEach(o=>{ const p=o.p; p.age++; const gap=p.potential-p.ovr;
+      if(p.age<=23 && gap>0) p.ovr=clamp(p.ovr+Math.round(gap*rnd(0.20,0.40)),48,99);
+      else if(p.age>=30) p.ovr=clamp(p.ovr-rint(0,2),42,99);
+      p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
+      p.owned=true; p.wage=wageDemand(p.ovr); if(!p.contractYears) p.contractYears=1;
+      if(G.squad.length<25) G.squad.push(p);
+    });
+    pushNews(`🤝 ${G.loans.length} 名租借球员赛季末归队（获得了成长）。`,"good"); G.loans=[];
+  }
+  // 赞助续期 / 刷新赞助与挖角邀请
+  if(G.sponsors){ G.sponsors.forEach(s=>s.seasonsLeft--); G.sponsors=G.sponsors.filter(s=>s.seasonsLeft>0); }
+  genSponsorOffers();
+  genJobOffers(rank);
+  // 转会窗口：一批自由球员进入市场（无转会费）
+  const faN=rint(4,7);
+  for(let i=0;i<faN;i++){
+    const veteran=Math.random()<0.5;
+    const p=makePlayer(pick(POS), veteran?-2:(Math.random()<0.3?rnd(2,7):0));
+    if(veteran){ p.age=rint(30,35); p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult); p.scouted=true; }
+    p.free=true; G.market.unshift(p);
+  }
+  pushNews(`📋 转会窗口开启：${faN} 名自由球员进入市场（无转会费，可直接谈合同）。`,"match");
+  if(G.national && !G.national.nation) genNTInvites();
+  rivalClubs().forEach(c=>{ if(c.squad) c.str=round1(clubStr(c)); });
+  applyPromotionRelegation();
+  if(G.conti){ G.conti.tier=qualifyTier(rank, finishDiv); G.conti.comp=null; }
+  G.season++; G.round=1;
+  G.table.forEach(t=>{t.P=t.W=t.D=t.L=t.GF=t.GA=t.pts=0;});
+  buildSchedules();
+  divClubs(myDiv()).forEach(ensureSquad);
+  startCup(); G.midweekDone=false;
+  G.leagueViewDiv=myDiv();
+  showSeasonModal(rank,bonus);
+}
+function cmpTable(a,b){ return b.pts-a.pts || (b.GF-b.GA)-(a.GF-a.GA) || b.GF-a.GF; }
+
+// ---------- 球探 ----------
+function sendScout(id){
+  const p=findPlayer(id); if(!p) return;
+  if(p.scouted){ toast("已掌握该球员潜力"); return; }
+  if(G.scoutQueue.find(s=>s.id===id)){ toast("球探正在考察中…"); return; }
+  if(G.scoutQueue.length>=G.scoutCapacity){ toast(`球探已满（${G.scoutCapacity}个名额），等考察完成`); return; }
+  if(G.cash<G.scoutFee){ toast("现金不足支付球探费"); return; }
+  G.cash=round1(G.cash-G.scoutFee);
+  G.scoutQueue.push({id, name:p.name, roundsLeft:1});
+  toast(`已派球探考察 ${p.name}（${eur(G.scoutFee)}），下一轮出报告`);
+  save(); render();
+}
+
+// ---------- 交易（谈判买入 / 即时卖出） ----------
+function askingFee(p){ return round1(p.value*clamp(1.05+(p.formIdx-2)*0.06+rnd(-0.03,0.06),0.9,1.5)); }
+function dealPlayer(){
+  const d=pendingDeal; if(!d) return null;
+  if(d.fromRival){ const c=G.table.find(t=>t.name===d.fromRival); return c&&c.squad?c.squad.find(x=>x.id===d.id):null; }
+  return G.market.find(x=>x.id===d.id);
+}
+function openNegotiation(id){
+  const fromRival=clubOf(id);
+  const p = fromRival ? fromRival.squad.find(x=>x.id===id) : G.market.find(x=>x.id===id);
+  if(!p) return;
+  if(G.squad.length>=25){ toast("阵容已满（上限 25 人），先卖人"); return; }
+  if(fromRival && fromRival.squad.length<=12){ toast(`${fromRival.name} 阵容人数不足，不愿放人`); return; }
+  const key = fromRival? isKeyPlayer(fromRival,p) : false;
+  const free = !fromRival && !!p.free;
+  const ask = fromRival
+    ? round1(p.value*clamp(1.25+(key?0.35:0)+(p.formIdx-2)*0.06+rnd(0,0.1),1.1,2.3))
+    : (free?0:askingFee(p));
+  const askW=wageDemand(p.ovr);
+  pendingDeal={id, ask, askW, free, fromRival: fromRival?fromRival.name:null};
+  const srcLabel = fromRival
+    ? `来自 <b>${fromRival.name}</b>${key?" · 核心球员，要价更高":""}`
+    : "自由市场";
+  showOverlay(`
+    <h2>💬 转会谈判 · ${NATIONS[p.nat].flag} ${p.name}</h2>
+    <div class="hint" style="margin:-4px 0 8px">${free?"🆓 自由球员 · 无转会费（只需谈周薪与合同）":srcLabel}</div>
+    <div class="negbox">
+      <div class="l"><span>位置 / 年龄 / 评分</span><b>${POS_CN[p.pos]} · ${p.age}岁 · ${p.ovr}</b></div>
+      <div class="l"><span>当前身价</span><b>${eur(p.value)}</b></div>
+      <div class="l"><span>对方要价</span><b style="color:var(--gold)">${eur(ask)}</b></div>
+      <div class="l"><span>球员周薪要求</span><b>${eur(askW)}/轮</b></div>
+    </div>
+    <div class="field"><label>你的转会费报价</label>
+      <div class="row"><input type="range" id="negFee" min="${round1(ask*0.5)}" max="${round1(ask*1.3)}" step="0.5" value="${ask}" oninput="syncNeg()"><span class="rngval" id="negFeeV">${eur(ask)}</span></div></div>
+    <div class="field"><label>你给的周薪</label>
+      <div class="row"><input type="range" id="negWage" min="${round2(askW*0.6)}" max="${round2(askW*1.4)}" step="0.01" value="${askW}" oninput="syncNeg()"><span class="rngval" id="negWageV">${eur(askW)}</span></div></div>
+    <div class="field"><label>合同年限</label>
+      <div class="row"><input type="range" id="negYears" min="1" max="5" step="1" value="3" oninput="syncNeg()"><span class="rngval" id="negYearsV">3 年</span></div></div>
+    <div class="negbox">
+      <div class="l"><span>经纪人佣金 (转会费 8%)</span><b id="negAgent">${eur(round1(ask*0.08))}</b></div>
+      <div class="l"><span>即时总支出 (转会费+佣金)</span><b id="negTotal" style="color:var(--gold)">${eur(round1(ask*1.08))}</b></div>
+      <div class="l"><span>你的现金</span><b>${eur(G.cash)}</b></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn big" style="flex:1" onclick="submitOffer()">提交报价</button>
+      <button class="btn ghost" style="flex:1" onclick="closeOverlay()">放弃</button>
+    </div>`);
+}
+function syncNeg(){
+  const fee=+$("#negFee").value, wage=+$("#negWage").value, years=+$("#negYears").value;
+  $("#negFeeV").textContent=eur(fee);
+  $("#negWageV").textContent=eur(wage);
+  $("#negYearsV").textContent=years+" 年";
+  $("#negAgent").textContent=eur(round1(fee*0.08));
+  $("#negTotal").textContent=eur(round1(fee*1.08));
+}
+function submitOffer(){
+  const p=dealPlayer(); if(!p) return;
+  const fee=+$("#negFee").value, wage=+$("#negWage").value, years=+$("#negYears").value;
+  const {ask,askW}=pendingDeal;
+  const total=round1(fee*1.08);
+  if(total>G.cash){ toast("现金不足支付转会费+佣金"); return; }
+  const feeLow = fee<ask*0.85, wageLow = wage<askW*0.92;
+  if(fee<ask*0.7 || wage<askW*0.8){ // 太低 → 破裂
+    closeOverlay(); toast("报价过低，谈判破裂 ❌");
+    pushNews(`❌ 与 <b>${p.name}</b> 的谈判破裂（报价过低）。`,"bad"); return;
+  }
+  if(!feeLow && !wageLow){ completeSigning(p,fee,wage,years); return; }
+  // 还价
+  const cFee=round1(Math.max(fee, ask*0.96)), cWage=round2(Math.max(wage, askW));
+  pendingDeal={...pendingDeal, cFee, cWage, years};
+  const cTotal=round1(cFee*1.08);
+  const afford=cTotal<=G.cash;
+  showOverlay(`
+    <h2>📨 对方还价</h2>
+    <p>${p.name} 一方拒绝了你的初始报价，提出如下条件：</p>
+    <div class="negbox">
+      <div class="l"><span>转会费</span><b style="color:var(--gold)">${eur(cFee)}</b></div>
+      <div class="l"><span>周薪</span><b>${eur(cWage)}/轮</b></div>
+      <div class="l"><span>合同</span><b>${years} 年</b></div>
+      <div class="l"><span>含佣金总支出</span><b style="color:var(--gold)">${eur(cTotal)}</b></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn big" style="flex:1" ${afford?"":"disabled"} onclick="acceptCounter()">${afford?"接受还价 ✓":"现金不足"}</button>
+      <button class="btn ghost" style="flex:1" onclick="closeOverlay()">放弃</button>
+    </div>`);
+}
+function acceptCounter(){
+  const p=dealPlayer(); if(!p) return;
+  completeSigning(p, pendingDeal.cFee, pendingDeal.cWage, pendingDeal.years);
+}
+function completeSigning(p,fee,wage,years){
+  const total=round1(fee*1.08);
+  if(total>G.cash){ toast("现金不足"); return; }
+  if(pendingDeal.fromRival){
+    const club=G.table.find(t=>t.name===pendingDeal.fromRival);
+    const idx=club&&club.squad?club.squad.findIndex(x=>x.id===p.id):-1;
+    if(idx<0){ toast("该球员已不在该队"); closeOverlay(); return; }
+    club.squad.splice(idx,1);
+    G.cash=round1(G.cash-total);
+    club.str=round1(clubStr(club));
+    pushNews(`✍️ <b>${G.club}</b> 从 <b>${pendingDeal.fromRival}</b> 挖来 <b>${p.name}</b>（${eur(fee)}，周薪 ${eur(wage)}/轮，${years}年）。`,"good");
+  } else {
+    const i=G.market.findIndex(x=>x.id===p.id); if(i<0){ toast("该球员已不在市场"); closeOverlay(); return; }
+    G.cash=round1(G.cash-total);
+    G.market.splice(i,1);
+    G.market.push(mkFreeMaybe(makePlayer(pick(POS), Math.random()<0.2?rnd(3,8):0)));
+    pushNews(`✍️ <b>${G.club}</b> 签下 <b>${p.name}</b>（${eur(fee)}，周薪 ${eur(wage)}/轮，${years}年）。`,"good");
+  }
+  p.owned=true; p.free=false; p.buyPrice=fee; p.wage=round2(wage); p.contractYears=years; p.starter=false;
+  G.squad.push(p);
+  closeOverlay();
+  toast(`签下 ${p.name}！转会费 ${eur(fee)} + 佣金，周薪 ${eur(wage)}`);
+  save(); render();
+}
+function sell(id){
+  const i=G.squad.findIndex(p=>p.id===id); if(i<0) return;
+  if(G.squad.length<=11){ toast("阵容不能少于 11 人"); return; }
+  const p=G.squad[i];
+  const sale=round1(p.value*0.96), profit=round1(sale-p.buyPrice);
+  G.cash=round1(G.cash+sale);
+  p.owned=false; p.starter=false; p.wage=0; p.contractYears=0; untrain(id);
+  G.offers=(G.offers||[]).filter(o=>o.playerId!==id);
+  G.squad.splice(i,1); G.market.unshift(p);
+  toast(`卖出 ${p.name}：${eur(sale)}（${profit>=0?"盈利 +":"亏损 "}${eur(Math.abs(profit))}）`);
+  pushNews(`💰 卖出 <b>${p.name}</b>：${eur(sale)}（${profit>=0?"盈利+":"亏损"}${eur(Math.abs(profit))}）。`,profit>=0?"good":"bad");
+  save(); render();
+}
+function renew(id){
+  const p=G.squad.find(x=>x.id===id); if(!p) return;
+  const cost=round1(Math.max(0.1,p.value*0.04));
+  if(G.cash<cost){ toast("现金不足支付续约佣金"); return; }
+  G.cash=round1(G.cash-cost);
+  p.contractYears=Math.min(p.contractYears+2,5); p.wage=wageDemand(p.ovr);
+  toast(`${p.name} 续约成功（+2年，佣金 ${eur(cost)}）`);
+  save(); render();
+}
+function acceptOffer(playerId){
+  const oi=G.offers.findIndex(o=>o.playerId===playerId); if(oi<0) return;
+  const o=G.offers[oi];
+  const pi=G.squad.findIndex(p=>p.id===playerId); if(pi<0){ G.offers.splice(oi,1); render(); return; }
+  if(G.squad.length<=11){ toast("阵容不能少于 11 人，无法出售"); return; }
+  const p=G.squad[pi];
+  const profit=round1(o.amount-p.buyPrice);
+  G.cash=round1(G.cash+o.amount);
+  const club=G.table.find(t=>t.name===o.fromClub);
+  untrain(playerId);
+  p.owned=false; p.starter=false; p.wage=0; p.contractYears=0;
+  if(club&&club.squad){ club.squad.push(p); club.str=round1(clubStr(club)); } // 真实加入对手阵容
+  G.squad.splice(pi,1); G.offers.splice(oi,1);
+  toast(`接受 ${o.fromClub} 的报价，${p.name} 转会（${eur(o.amount)}）`);
+  pushNews(`✅ 接受 <b>${o.fromClub}</b> 的报价，<b>${p.name}</b> 以 ${eur(o.amount)} 转会（${profit>=0?'盈利+':'亏损'}${eur(Math.abs(profit))}）。`,profit>=0?"good":"bad");
+  save(); render();
+}
+function rejectOffer(playerId){
+  const oi=G.offers.findIndex(o=>o.playerId===playerId); if(oi<0) return;
+  const o=G.offers.splice(oi,1)[0];
+  toast("已拒绝报价"); pushNews(`🚫 拒绝了 ${o.fromClub} 对 ${o.playerName} 的报价。`,"match");
+  save(); render();
+}
+function toggleStarter(id){
+  const p=G.squad.find(x=>x.id===id); if(!p) return;
+  if(inLineup(id)){ removeFromLineup(id); save(); render(); return; }
+  if(p.injured){ toast("伤病球员无法首发"); return; }
+  const ss=slots();
+  let idx=ss.findIndex((s,i)=>G.lineup[i]==null && s.pos===p.pos);  // 优先同位置空位
+  if(idx<0) idx=G.lineup.indexOf(null);                             // 否则任意空位
+  if(idx<0){ toast("首发已满 11 人，去球场拖动替换或先下场一人"); return; }
+  placeInLineup(id, idx);
+}
+
+// ---------- 衍生 ----------
+function networth(){ return round1(G.cash + G.squad.reduce((a,p)=>a+p.value,0)); }
+function myRank(){ const s=divClubs(myDiv()).sort(cmpTable); return s.findIndex(t=>t.you)+1; }
+function pushNews(html,type="match"){ G.news.unshift({w:`S${G.season}·R${Math.min(G.round,G.totalRounds)}`,html,type}); if(G.news.length>70) G.news.pop(); }
+
+// =========================================================================
+//  渲染
+// =========================================================================
+function starsStr(n){ let s=""; for(let i=1;i<=5;i++) s+=i<=n?"★":"☆"; return s; }
+function potStars(v){ return clamp(Math.round((v-50)/9),1,5); }
+function fmtChg(p){
+  const d=p.value-p.buyPrice;
+  if(!p.owned||Math.abs(d)<0.05) return `<span class="chg flat">—</span>`;
+  const pct=p.buyPrice>0?Math.round(d/p.buyPrice*100):0;
+  return `<span class="chg ${d>0?"up":"down"}">${d>0?"▲":"▼"} ${eur(Math.abs(d))} (${pct>0?"+":""}${pct}%)</span>`;
+}
+function formPill(p){ const f=FORMS[p.formIdx]; return `<span class="form-pill" style="background:${f.color}22;color:${f.color}">${f.name}</span>`; }
+function potBadge(p){
+  if(p.scouted) return `<span class="pot known">潜${p.potential} <span class="stars">${starsStr(potStars(p.potential))}</span></span>`;
+  return `<span class="pot unknown">潜~${p.potEst}? <span class="stars">${starsStr(potStars(p.potEst))}</span></span>`;
+}
+function playerCard(p,mode){
+  const inj=p.injured?`<span class="chg down">🤕${p.injured}轮</span>`:"";
+  const star=(mode==="squad"&&p.starter)?"starter":"";
+  const injc=p.injured?"injured":"";
+  const wonder=(isWonder(p)&&p.scouted)?"wonder":"";
+  const wt=(isWonder(p)&&p.scouted)?`<span class="wonder-tag">妖人</span>`:"";
+  let extra="", actions="";
+  if(mode==="squad"){
+    const ctr = p.contractYears<=1?`<span class="ctr-tag warn">合同最后1年</span>`:`<span class="ctr-tag">合同${p.contractYears}年</span>`;
+    const tt = G.training.includes(p.id)?`<span class="ctr-tag" style="background:#1f3a2a;color:var(--up)">🎓训练中</span>`:"";
+    extra=`<div class="meta">买入 ${eur(p.buyPrice)} ${fmtChg(p)} · 周薪 ${eur(p.wage)} ${ctr} ${tt}</div>`;
+    actions=`<div class="actions">
+      <button class="btn sm ${p.starter?'':'ghost'}" onclick="toggleStarter(${p.id})">${p.starter?"✓首发":"替补"}</button>
+      ${p.contractYears<=1?`<button class="btn sm ghost" onclick="renew(${p.id})">续约</button>`:""}
+      <button class="btn sm ghost" onclick="loanOut(${p.id})">租借</button>
+      <button class="btn sm sell" onclick="sell(${p.id})">卖 ${eur(round1(p.value*0.96))}</button>
+    </div>`;
+  } else {
+    const scoutBtn=p.scouted?"":`<button class="btn sm scout" onclick="sendScout(${p.id})">🔭考察</button>`;
+    actions=`<div class="actions">
+      <button class="btn sm" onclick="openNegotiation(${p.id})">💬 谈判</button>
+      ${scoutBtn}
+    </div>`;
+  }
+  return `<div class="pcard ${star} ${injc} ${wonder}">
+    <div class="prow">
+      <span class="pos ${p.pos}">${p.pos}</span>
+      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="ovr">${p.ovr}</span>
+    </div>
+    <div class="meta">
+      <span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} ${wt} ${inj} ${(p.free&&!p.owned)?'<span class="ctr-tag" style="background:#13324a;color:#7fd0ff">🆓自由身</span>':''}
+      <span class="spacer" style="flex:1"></span>
+      <span class="val">${eur(p.value)}</span>
+    </div>
+    ${extra}
+    ${actions}
+  </div>`;
+}
+
+function lastName(n){ const a=n.split(" "); return a[a.length-1]; }
+function pitchSlotHTML(s,i){
+  const id=G.lineup[i];
+  const p=(id!=null)&&G.squad.find(x=>x.id===id);
+  if(p){
+    const oop=p.pos!==s.pos;
+    return `<div class="slot ${oop?'oop':''}" style="left:${s.x}%;top:${s.y}%" draggable="true"
+      ondragstart="dragData={from:'slot',slot:${i},id:${p.id}}" ondragover="event.preventDefault()" ondrop="dropOnSlot(${i})"
+      onclick="clickSlot(${i})" title="${p.name}（${POS_CN[p.pos]}${oop?'，非自然位置 -15%':''}）">
+      <div class="disc ${p.pos}">${p.ovr}</div><div class="nm">${lastName(p.name)}</div></div>`;
+  }
+  return `<div class="slot empty ${G._sel!=null?'avail':''}" style="left:${s.x}%;top:${s.y}%"
+    ondragover="event.preventDefault()" ondrop="dropOnSlot(${i})" onclick="clickSlot(${i})">
+    <div class="disc">${s.pos}</div></div>`;
+}
+function renderPitch(){
+  const ss=slots();
+  const benchP=G.squad.filter(p=>!inLineup(p.id)).sort((a,b)=>b.ovr-a.ovr);
+  const bench=benchP.map(p=>`<div class="benchchip ${p.injured?'injured':''} ${G._sel===p.id?'sel':''}"
+      ${p.injured?'':`draggable="true" ondragstart="dragData={from:'bench',id:${p.id}}"`}
+      ${p.injured?'':`onclick="clickBench(${p.id})"`} title="${p.name}">
+      <span class="pos ${p.pos}" style="width:26px">${p.pos}</span>${lastName(p.name)} <b>${p.ovr}</b>${p.injured?` 🤕${p.injured}`:""}</div>`).join("")
+      || `<span class="hint">替补席为空</span>`;
+  return `
+  <div class="panel">
+    <h2>🏟️ 球场阵型 <span class="hint">拖球员到位置；或先点替补、再点位置；点场上球员=下场</span></h2>
+    <div class="filterbar">
+      ${Object.keys(FORMATIONS).map(f=>`<span class="chip ${G.formation===f?'active':''}" onclick="setFormation('${f}')">${f}</span>`).join("")}
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn sm ghost" onclick="autoLineup();save();render()">⚡ 自动最佳</button>
+    </div>
+    <div class="filterbar" style="margin-top:-4px">
+      ${TACTIC_KEYS.map(t=>`<span class="chip ${(G.tactic||"平衡")===t?'active':''}" onclick="setTactic('${t}')">${t}</span>`).join("")}
+    </div>
+    <div class="hint" style="margin-bottom:6px">🎯 战术 <b>${G.tactic||"平衡"}</b>：${TACTICS[G.tactic||"平衡"].desc}</div>
+    <div class="pitch" ondragover="event.preventDefault()">${ss.map((s,i)=>pitchSlotHTML(s,i)).join("")}</div>
+    <div class="hint" style="margin-top:8px">替补席（拖到球场上场 / 把场上球员拖到此处下场）</div>
+    <div class="bench" ondragover="event.preventDefault()" ondrop="dropOnBench()">${bench}</div>
+  </div>`;
+}
+function renderOffers(){
+  if(!G.offers || !G.offers.length) return "";
+  return `<div class="panel" style="border-color:var(--gold)">
+    <h2>📨 转会报价 <span class="hint">（对手求购你的球员，出价常高于身价；卖星会让对手变强）</span></h2>
+    ${G.offers.map(o=>{
+      const p=G.squad.find(x=>x.id===o.playerId);
+      const prof=p?round1(o.amount-p.buyPrice):0;
+      return `<div class="negbox">
+        <div class="l"><span><b>${o.fromClub}</b> 求购 <b>${p?NATIONS[p.nat].flag+" "+p.name:o.playerName}</b>${p?` · ${POS_CN[p.pos]} ${p.ovr} · 身价 ${eur(p.value)}`:""}</span><b style="color:var(--gold)">${eur(o.amount)}</b></div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn sm" onclick="acceptOffer(${o.playerId})">接受（${prof>=0?"盈利+":"亏损"}${eur(Math.abs(prof))}）</button>
+          <button class="btn sm ghost" onclick="rejectOffer(${o.playerId})">拒绝</button>
+        </div></div>`;
+    }).join("")}
+  </div>`;
+}
+function viewSquad(){
+  const r=teamRatings();
+  const order={GK:0,DF:1,MF:2,FW:3};
+  const sorted=[...G.squad].sort((a,b)=>(b.starter-a.starter)||order[a.pos]-order[b.pos]||b.ovr-a.ovr);
+  const wb=wageBill();
+  return renderOffers()+renderLoans()+renderPitch()+`
+  <div class="panel">
+    <h2>🧤 球队总览</h2>
+    <div class="squadsum">
+      <div class="ring"><span class="num">${Math.round(r.ovr)}</span><span class="lbl">整体</span></div>
+      <div class="ring"><span class="num">${Math.round(r.att)}</span><span class="lbl">进攻</span></div>
+      <div class="ring"><span class="num">${Math.round(r.def)}</span><span class="lbl">防守</span></div>
+      <div class="ring"><span class="num ${r.count!==11?'warn':''}">${r.count}/11</span><span class="lbl">首发</span></div>
+      <div class="ring"><span class="num" style="font-size:16px">${G.formation}</span><span class="lbl">阵型</span></div>
+      <div class="ring"><span class="num">${eur(wb)}</span><span class="lbl">周薪/轮</span></div>
+      <div class="spacer"></div>
+      <button class="btn ghost" onclick="autoLineup();save();render()">⚡ 自动最佳阵容</button>
+    </div>
+    <div class="hint">恰好 11 人首发（含 1 门将）方可比赛。年轻球员多出场→成长更快。每轮自动扣工资，注意现金流。</div>
+  </div>
+  <div class="panel">
+    <h2>球员名单 <span class="hint">（${G.squad.length}/25 人）</span></h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
+      ${sorted.map(p=>playerCard(p,"squad")).join("")}
+    </div>
+  </div>`;
+}
+function setMarketSort(k){ if((G.marketSort||'ovr')===k) G.marketSortDir=(G.marketSortDir||-1)*-1; else { G.marketSort=k; G.marketSortDir=(k==='age')?1:-1; } save(); render(); }
+function marketList(){
+  let list=G.market.map(p=>({p,club:null}));
+  rivalClubs().forEach(c=>{ if(c.squad) c.squad.forEach(p=>list.push({p,club:c})); });
+  if(G.marketFilterPos!=="ALL") list=list.filter(e=>e.p.pos===G.marketFilterPos);
+  if(G.marketFreeOnly) list=list.filter(e=>e.p.free);
+  const raw=(G.marketFilterText||"").trim(), t=raw.toLowerCase();
+  if(t) list=list.filter(e=>e.p.name.toLowerCase().includes(t) || (e.p.nat&&e.p.nat.includes(raw)));
+  const sf=G.marketSort||'ovr', sd=G.marketSortDir||-1;
+  const sv=e=>{ const p=e.p; return sf==='value'?p.value : sf==='age'?p.age : sf==='potential'?(p.scouted?p.potential:p.potEst) : p.ovr; };
+  list.sort((a,b)=>(sv(a)-sv(b))*sd);
+  if(!list.length) return `<div class="empty">没有符合条件的球员</div>`;
+  const capped=list.slice(0,60);
+  return capped.map(e=> e.club? worldPlayerCard(e.p,e.club) : playerCard(e.p,"market")).join("")
+    + (list.length>60?`<div class="hint" style="grid-column:1/-1">仅显示前 60 名，输入球员姓名或国家（如「中国」「巴西」）缩小范围</div>`:"");
+}
+function worldPlayerCard(p,club){
+  const scoutBtn=p.scouted?"":`<button class="btn sm scout" onclick="sendScout(${p.id})">🔭考察</button>`;
+  return `<div class="pcard ${(isWonder(p)&&p.scouted)?'wonder':''} ${p.injured?'injured':''}">
+    <div class="prow"><span class="pos ${p.pos}">${p.pos}</span><span class="pname">${NATIONS[p.nat].flag} ${p.name}</span><span class="ovr">${p.ovr}</span></div>
+    <div class="meta"><span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} <span class="spacer" style="flex:1"></span><span class="val">${eur(p.value)}</span></div>
+    <div class="meta"><span class="real">所属 ${club.name}</span> ${p.injured?`<span class="chg down">🤕${p.injured}轮</span>`:""}</div>
+    <div class="actions"><button class="btn sm" onclick="openNegotiation(${p.id})">💬 求购</button>${scoutBtn}</div>
+  </div>`;
+}
+function viewMarket(){
+  const chips=["ALL",...POS].map(x=>`<span class="chip ${G.marketFilterPos===x?'active':''}" onclick="G.marketFilterPos='${x}';render()">${x==="ALL"?"全部":POS_CN[x]}</span>`).join("");
+  return `
+  <div class="panel">
+    <h2>💱 转会市场 <span class="hint">现金 ${eur(G.cash)}</span></h2>
+    <div class="filterbar">
+      ${chips}
+      <span class="chip ${G.marketFreeOnly?'active':''}" onclick="G.marketFreeOnly=!G.marketFreeOnly;render()">🆓 自由球员</span>
+      <input id="mkSearch" placeholder="搜索球员姓名…" value="${G.marketFilterText}"
+        oninput="G.marketFilterText=this.value; document.getElementById('mkList').innerHTML=marketList();">
+    </div>
+    <div class="hint">💡 买入要走「谈判」（报价/周薪偏低会被还价或谈崩）。<b>对手也在抢人</b>——看中的高分球员要尽快下手，否则可能被对手签走；对手有时也会挂牌出售好球员，留意捡漏。</div>
+    <div class="filterbar"><span class="hint" style="align-self:center;margin-right:2px">排序：</span>${["ovr","value","age","potential"].map(k=>`<span class="chip ${(G.marketSort||'ovr')===k?'active':''}" onclick="setMarketSort('${k}')">${({ovr:"评分",value:"身价",age:"年龄",potential:"潜力"})[k]}${(G.marketSort||'ovr')===k?((G.marketSortDir||-1)<0?" ↓":" ↑"):""}</span>`).join("")}</div>
+    <div class="grid" id="mkList" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); margin-top:12px">
+      ${marketList()}
+    </div>
+  </div>`;
+}
+
+function rivalPlayerCard(p,club){
+  const inj=p.injured?`<span class="chg down">🤕${p.injured}轮</span>`:"";
+  const key=isKeyPlayer(club,p);
+  return `<div class="pcard ${isWonder(p)?'wonder':''} ${p.injured?'injured':''}">
+    <div class="prow">
+      <span class="pos ${p.pos}">${p.pos}</span>
+      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="ovr">${p.ovr}</span>
+    </div>
+    <div class="meta"><span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} ${key?'<span class="ctr-tag">核心</span>':''} ${inj}
+      <span class="spacer" style="flex:1"></span><span class="val">${eur(p.value)}</span></div>
+    <div class="actions"><button class="btn sm" onclick="openNegotiation(${p.id})">💬 求购</button></div>
+  </div>`;
+}
+function viewRivals(){
+  const vConf=G.rivalViewConf||G.conf;
+  const vc=G.rivalViewCountry||G.country;
+  const confChips=Object.keys(CONTI).map(c=>`<span class="chip ${vConf===c?'active':''}" onclick="G.rivalViewConf='${c}';G.rivalViewCountry=WORLD_COUNTRIES.find(w=>w.c==='${c}').n;G.selRival=0;render()">${c}</span>`).join("");
+  const countryChips=WORLD_COUNTRIES.filter(w=>w.c===vConf).map(w=>`<span class="chip ${vc===w.n?'active':''}" onclick="G.rivalViewCountry='${w.n}';G.selRival=0;render()">${flagOf(w.n)}${w.n===G.country?'🏠':''}${w.n}</span>`).join("");
+  const rivals=G.table.filter(c=>c.country===vc && !c.you);
+  if(!rivals.length) return `<div class="panel"><h2>🆚 球队阵容</h2><div class="filterbar">${confChips}</div><div class="filterbar">${countryChips}</div><div class="empty">该联赛没有可查看的球队</div></div>`;
+  const sel=clamp(G.selRival||0,0,rivals.length-1);
+  const club=ensureSquad(rivals[sel]);
+  const chips=rivals.map((c,i)=>`<span class="chip ${i===sel?'active':''}" onclick="G.selRival=${i};render()">${c.name}</span>`).join("");
+  const order={GK:0,DF:1,MF:2,FW:3};
+  const list=[...club.squad].sort((a,b)=>order[a.pos]-order[b.pos]||b.ovr-a.ovr);
+  return `
+  <div class="panel">
+    <h2>🆚 球队阵容 <span class="hint">选大洲→国家→球队，可直接谈判挖人</span></h2>
+    <div class="filterbar">${confChips}</div>
+    <div class="filterbar">${countryChips}</div>
+    <div class="filterbar">${chips}</div>
+    <div class="squadsum">
+      <div class="ring"><span class="num">${Math.round(clubStr(club))}</span><span class="lbl">实力(首发11)</span></div>
+      <div class="ring"><span class="num">${club.squad.length}</span><span class="lbl">阵容人数</span></div>
+      <div class="ring"><span class="num">${club.pts}</span><span class="lbl">联赛积分</span></div>
+      <div class="ring"><span class="num" style="font-size:15px">${club.real||flagOf(club.country)+club.country}</span><span class="lbl">原型/国籍</span></div>
+    </div>
+    <div class="hint">💡 直接从对手阵容挖人：<b>要价高于自由市场</b>（标「核心」的首发更贵），但能精准补强；挖走会削弱对手实力。对手阵容≤12人时不愿放人。</div>
+  </div>
+  <div class="panel">
+    <h2>${club.name} 阵容 <span class="hint">（${club.squad.length} 人）</span></h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
+      ${list.map(p=>rivalPlayerCard(p,club)).join("")}
+    </div>
+  </div>`;
+}
+function viewScout(){
+  const queue=G.scoutQueue.map(s=>`<span class="scoutslot">🔭 ${s.name} · ${s.roundsLeft}轮后出报告</span>`).join("")||`<span class="hint">暂无球探任务</span>`;
+  const free=G.scoutCapacity-G.scoutQueue.length;
+  // 推荐考察：市场里未侦察、年轻、估计潜力高的
+  const recs=G.market.filter(p=>!p.scouted&&p.age<=23).sort((a,b)=>b.potEst-a.potEst).slice(0,8);
+  return `
+  <div class="panel">
+    <h2>🔭 球探网络</h2>
+    <div style="margin-bottom:10px">
+      ${Array.from({length:G.scoutCapacity}).map((_,i)=>i<G.scoutQueue.length
+        ? `<span class="scoutslot">🔭 ${G.scoutQueue[i].name} · ${G.scoutQueue[i].roundsLeft}轮</span>`
+        : `<span class="scoutslot" style="opacity:.5">⊕ 空闲名额</span>`).join("")}
+    </div>
+    <div class="hint">球探名额 ${free}/${G.scoutCapacity} 空闲 · 每次 ${eur(G.scoutFee)}，下一轮出报告，揭示真实潜力并标记妖人。未考察的球员只能看到带「?」的模糊潜力估计。</div>
+  </div>
+  <div class="panel">
+    <h2>⭐ 推荐考察 <span class="hint">（市场上 ≤23 岁、估计潜力最高的新星）</span></h2>
+    ${recs.length?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">${recs.map(p=>playerCard(p,"market")).join("")}</div>`:`<div class="empty">市场里的年轻人都考察过了</div>`}
+  </div>`;
+}
+
+function coachUpgradeCost(){ return G.coachLevel===1?15 : G.coachLevel===2?35 : null; }
+function viewTraining(){
+  const used=G.training.length, cost=coachUpgradeCost();
+  const owned=[...G.squad].sort((a,b)=>{
+    const ta=G.training.includes(a.id)?1:0, tb=G.training.includes(b.id)?1:0;
+    return (tb-ta) || a.age-b.age || b.potential-a.potential;
+  });
+  return `
+  <div class="panel">
+    <h2>🎓 训练中心</h2>
+    <div class="squadsum">
+      <div class="ring"><span class="num">Lv.${G.coachLevel}</span><span class="lbl">教练等级</span></div>
+      <div class="ring"><span class="num ${used>=G.trainSlots?'warn':''}">${used}/${G.trainSlots}</span><span class="lbl">训练名额</span></div>
+      <div class="spacer"></div>
+      ${cost!=null?`<button class="btn ghost" onclick="upgradeCoach()">⬆ 升级教练 Lv.${G.coachLevel+1}（${eur(cost)}，名额+1·效果↑）</button>`:`<span class="hint">教练已满级 ✅</span>`}
+    </div>
+    <div class="hint">把球员放进训练名额：<b>年轻球员（≤23岁）成长更快</b>，<b>老将（≥30岁）衰退更慢</b>。赛季末结算成长，幅度取决于<b>出场时间</b> × <b>球队战绩</b> × <b>训练</b>——多打比赛、排名越高、教练越强，长得越快。</div>
+  </div>
+  <div class="panel">
+    <h2>球员训练安排 <span class="hint">（${used}/${G.trainSlots} 名额）</span></h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
+      ${owned.map(p=>trainCard(p)).join("")}
+    </div>
+  </div>`;
+}
+function trainCard(p){
+  const inT=G.training.includes(p.id);
+  const tag = p.age<=23?`<span class="ctr-tag" style="background:#1f3a2a;color:var(--up)">青训苗子</span>`
+    : p.age>=30?`<span class="ctr-tag warn">需防衰退</span>`:`<span class="ctr-tag">巅峰期</span>`;
+  return `<div class="pcard ${inT?'starter':''}">
+    <div class="prow">
+      <span class="pos ${p.pos}">${p.pos}</span>
+      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="ovr">${p.ovr}</span>
+    </div>
+    <div class="meta"><span>${p.age}岁</span>${potBadge(p)} ${tag}</div>
+    <div class="actions">
+      <button class="btn sm ${inT?'':'ghost'}" onclick="toggleTraining(${p.id})">${inT?'✓ 训练中':'加入训练'}</button>
+    </div>
+  </div>`;
+}
+function toggleTraining(id){
+  const i=G.training.indexOf(id);
+  if(i>=0) G.training.splice(i,1);
+  else{
+    if(G.training.length>=G.trainSlots){ toast(`训练名额已满（${G.trainSlots}个），升级教练或先移出一人`); return; }
+    G.training.push(id);
+  }
+  save(); render();
+}
+function upgradeCoach(){
+  const cost=coachUpgradeCost();
+  if(cost==null){ toast("教练已满级"); return; }
+  if(G.cash<cost){ toast("现金不足升级教练"); return; }
+  G.cash=round1(G.cash-cost); G.coachLevel++; G.trainSlots=G.coachLevel+2;
+  toast(`教练升级到 Lv.${G.coachLevel}！训练名额 +1`);
+  pushNews(`🎓 训练设施升级到 Lv.${G.coachLevel}，训练名额增至 ${G.trainSlots}，培养与防衰退效果提升。`,"good");
+  save(); render();
+}
+function untrain(id){ const i=G.training.indexOf(id); if(i>=0) G.training.splice(i,1); }
+
+// ---------- 青训学院 ----------
+function generateIntake(){
+  if(!G.academy) G.academy={level:1, prospects:[]};
+  const lvl=G.academy.level, n=lvl+1;
+  for(let i=0;i<n;i++){
+    const ovr=rint(44, 52+lvl*2);
+    const p=makePlayer(pick(POS),{ovr, age:rint(15,17), potBoost:rint(8, 12+lvl*4), nat:(G.academy.targetNat||undefined)});
+    p.homegrown=true;
+    G.academy.prospects.push(p);
+  }
+  if(G.academy.prospects.length>14) G.academy.prospects=G.academy.prospects.slice(-14);
+}
+function academyUpgradeCost(){ return G.academy.level===1?12 : G.academy.level===2?28 : G.academy.level===3?50 : null; }
+function setAcademyNat(v){ G.academy.targetNat = v||null; save(); render(); }
+function upgradeAcademy(){
+  const cost=academyUpgradeCost();
+  if(cost==null){ toast("青训学院已满级"); return; }
+  if(G.cash<cost){ toast("现金不足升级青训学院"); return; }
+  G.cash=round1(G.cash-cost); G.academy.level++;
+  toast(`青训学院升级到 Lv.${G.academy.level}！`);
+  pushNews(`🌱 青训学院升级到 Lv.${G.academy.level}，未来苗子数量更多、潜力更高。`,"good");
+  save(); render();
+}
+function promoteProspect(id){
+  const i=G.academy.prospects.findIndex(p=>p.id===id); if(i<0) return;
+  if(G.squad.length>=25){ toast("一队阵容已满（25人）"); return; }
+  const p=G.academy.prospects[i];
+  p.owned=true; p.buyPrice=0; p.wage=wageDemand(p.ovr); p.contractYears=3; p.starter=false; p.homegrown=true;
+  G.squad.push(p); G.academy.prospects.splice(i,1);
+  toast(`${p.name} 提拔进一队！（自家青训，零转会费）`);
+  pushNews(`🌟 青训提拔：<b>${p.name}</b>（${p.age}岁 ${POS_CN[p.pos]}）进入一队，免转会费。`,"good");
+  save(); render();
+}
+function releaseProspect(id){
+  const i=G.academy.prospects.findIndex(p=>p.id===id); if(i<0) return;
+  const p=G.academy.prospects[i]; G.academy.prospects.splice(i,1);
+  toast(`已放弃 ${p.name}`); save(); render();
+}
+function academyCard(p){
+  const scoutBtn=p.scouted?"":`<button class="btn sm scout" onclick="sendScout(${p.id})">🔭考察</button>`;
+  const wt=(isWonder(p)&&p.scouted)?`<span class="wonder-tag">妖人</span>`:"";
+  return `<div class="pcard ${(isWonder(p)&&p.scouted)?'wonder':''}">
+    <div class="prow">
+      <span class="pos ${p.pos}">${p.pos}</span>
+      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="ovr">${p.ovr}</span>
+    </div>
+    <div class="meta"><span>${p.age}岁</span>${potBadge(p)} ${wt}</div>
+    <div class="actions">
+      <button class="btn sm" onclick="promoteProspect(${p.id})">提拔进一队</button>
+      ${scoutBtn}
+      <button class="btn sm ghost" onclick="releaseProspect(${p.id})">放弃</button>
+    </div>
+  </div>`;
+}
+function viewAcademy(){
+  const a=G.academy, cost=academyUpgradeCost();
+  const list=[...a.prospects].sort((x,y)=>(y.scouted?y.potential:y.potEst)-(x.scouted?x.potential:x.potEst));
+  const opts=`<option value="">全球（混合）</option>`+NAT_KEYS.map(k=>`<option value="${k}" ${a.targetNat===k?"selected":""}>${NATIONS[k].flag} ${k}</option>`).join("");
+  const sel=`<div class="panel"><h2>🎯 定向青训</h2>
+    <div class="hint" style="margin-bottom:6px">选「全球」= 各国混合；选某个国家（如 🇨🇳 中国）后，今后每期入营的苗子都来自该国。每赛季 <b>2 期</b>青训营（年中 + 赛季末），每期约 ${a.level+1} 名。当前定向：<b>${a.targetNat?NATIONS[a.targetNat].flag+" "+a.targetNat:"全球（混合）"}</b></div>
+    <select onchange="setAcademyNat(this.value)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px;font-size:14px;width:100%">${opts}</select></div>`;
+  return sel+`
+  <div class="panel">
+    <h2>🌱 青训学院</h2>
+    <div class="squadsum">
+      <div class="ring"><span class="num">Lv.${a.level}</span><span class="lbl">学院等级</span></div>
+      <div class="ring"><span class="num">${a.prospects.length}</span><span class="lbl">在训苗子</span></div>
+      <div class="ring"><span class="num">${a.level+1}</span><span class="lbl">每季新苗</span></div>
+      <div class="spacer"></div>
+      ${cost!=null?`<button class="btn ghost" onclick="upgradeAcademy()">⬆ 升级学院 Lv.${a.level+1}（${eur(cost)}）</button>`:`<span class="hint">学院已满级 ✅</span>`}
+    </div>
+    <div class="hint">每赛季末学院产出一批 15-17 岁苗子（等级越高，数量越多、潜力越高）。看好的可<b>免费提拔进一队</b>（自家青训零转会费、周薪低）；潜力显示为<b>估计值</b>，派球探可看清真实潜力。苗子满 19 岁仍未提拔会离队。</div>
+  </div>
+  <div class="panel">
+    <h2>本期苗子 <span class="hint">（${a.prospects.length} 人）</span></h2>
+    ${list.length?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">${list.map(p=>academyCard(p)).join("")}</div>`:`<div class="empty">暂无苗子，赛季结束后会有新一批</div>`}
+  </div>`;
+}
+
+function viewLeague2(){
+  const vc=G.leagueViewCountry||G.country;
+  const divsHere=[...new Set(G.table.filter(c=>c.country===vc).map(c=>c.div))].sort((a,b)=>a-b);
+  let vd=(G.leagueViewDiv!=null)?G.leagueViewDiv:myDiv();
+  if(!divsHere.includes(vd)) vd=divsHere[0];
+  const isMine=(vc===G.country);
+  const sorted=leagueClubs(vc,vd).sort(cmpTable);
+  const vConf=G.leagueViewConf||G.conf;
+  const confChips=Object.keys(CONTI).map(c=>`<span class="chip ${vConf===c?'active':''}" onclick="G.leagueViewConf='${c}';G.leagueViewCountry=WORLD_COUNTRIES.find(w=>w.c==='${c}').n;G.leagueViewDiv=null;render()">${c}</span>`).join("");
+  const countryChips=WORLD_COUNTRIES.filter(w=>w.c===vConf).map(w=>`<span class="chip ${vc===w.n?'active':''}" onclick="G.leagueViewCountry='${w.n}';G.leagueViewDiv=null;render()">${flagOf(w.n)}${w.n===G.country?'🏠':''}${w.n}</span>`).join("");
+  const divChips=divsHere.length>1? `<div class="filterbar">${divsHere.map(d=>`<span class="chip ${vd===d?'active':''}" onclick="G.leagueViewDiv=${d};render()">${DIV_NAMES[d]||('第'+(d+1)+'级')}</span>`).join("")}</div>`:"";
+  const relZone=sorted.length-PROMO;
+  return `
+  <div class="panel">
+    <h2>🏆 第 ${G.season} 赛季 · ${flagOf(vc)}${vc} ${DIV_NAMES[vd]||'联赛'} <span class="hint">（第 ${Math.min(G.round,G.totalRounds)} / ${G.totalRounds} 轮）</span></h2>
+    <div class="filterbar">${confChips}</div>
+    <div class="filterbar">${countryChips}</div>
+    ${divChips}
+    <table>
+      <tr><th>#</th><th>球队</th><th class="c">实力</th><th class="c">场</th><th class="c">胜</th><th class="c">平</th><th class="c">负</th><th class="c">净</th><th class="c">积分</th></tr>
+      ${sorted.map((t,i)=>{
+        const zoneCol = isMine? ((vd>0 && i<PROMO)?'color:var(--up)':((vd<DIV_NAMES.length-1 && i>=relZone)?'color:var(--down)':'')) : '';
+        return `<tr class="${t.you?'you':''}">
+          <td style="${zoneCol}">${i+1}</td>
+          <td>${t.you?"⭐ ":""}${t.name}${t.real?` <span class="real">(${t.real})</span>`:""}</td>
+          <td class="c">${Math.round(clubStr(t))}</td>
+          <td class="c">${t.P}</td><td class="c">${t.W}</td><td class="c">${t.D}</td><td class="c">${t.L}</td>
+          <td class="c">${t.GF-t.GA>0?"+":""}${t.GF-t.GA}</td>
+          <td class="c pts">${t.pts}</td>
+        </tr>`;
+      }).join("")}
+    </table>
+    <div class="hint">${isMine?`绿=升级区(前${PROMO})，红=降级区(后${PROMO})，赛季末自动升降级。`:`${flagOf(vc)}${vc} 联赛——可在「💱转会市场」全球搜索或「🆚球队阵容」直接买卖其球员。`}</div>
+  </div>`+statBoards(vc,vd);
+}
+function viewLeague(){
+  const sorted=[...G.table].sort(cmpTable);
+  return `
+  <div class="panel">
+    <h2>🏆 第 ${G.season} 赛季 · 积分榜 <span class="hint">（第 ${Math.min(G.round,G.totalRounds)} / ${G.totalRounds} 轮）</span></h2>
+    <table>
+      <tr><th>#</th><th>球队</th><th class="c">实力</th><th class="c">场</th><th class="c">胜</th><th class="c">平</th><th class="c">负</th><th class="c">进</th><th class="c">失</th><th class="c">净</th><th class="c">积分</th></tr>
+      ${sorted.map((t,i)=>`<tr class="${t.you?'you':''}">
+        <td>${i+1}</td>
+        <td>${t.you?"⭐ ":""}${t.name}${t.real?` <span class="real">(${t.real})</span>`:""}</td>
+        <td class="c">${Math.round(clubStr(t))}</td>
+        <td class="c">${t.P}</td><td class="c">${t.W}</td><td class="c">${t.D}</td><td class="c">${t.L}</td>
+        <td class="c">${t.GF}</td><td class="c">${t.GA}</td><td class="c">${t.GF-t.GA>0?"+":""}${t.GF-t.GA}</td>
+        <td class="c pts">${t.pts}</td>
+      </tr>`).join("")}
+    </table>
+    <div class="hint">代称对照：${RIVALS.map(r=>r.nick+"="+r.real).join(" · ")}</div>
+  </div>`;
+}
+
+function viewNews(){
+  if(!G.news.length) return `<div class="panel"><div class="empty">暂无新闻</div></div>`;
+  return `<div class="panel"><h2>📰 新闻动态</h2>
+    ${G.news.map(n=>`<div class="news-item ${n.type}"><span class="w">${n.w}</span>${n.html}</div>`).join("")}
+  </div>`;
+}
+function viewMenu(){
+  return `<div class="panel"><h2>⚙️ 菜单 / 存档</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <button class="btn" onclick="downloadSave()">💾 导出存档(文件)</button>
+      <button class="btn ghost" onclick="importSaveClick()">📂 导入存档(文件)</button>
+      <button class="btn ghost" onclick="exportSave()">📋 复制存档码</button>
+      <button class="btn ghost" onclick="importPrompt()">📥 粘贴导入</button>
+      <button class="btn ghost" onclick="confirmNewGame()">🔄 重开新游戏</button>
+    </div>
+    <div class="hint" style="margin-top:12px">
+      <b>📱 换设备 / 手机玩同一存档：</b><br>
+      ① 本机点「💾 导出存档(文件)」下载 .json（或「📋 复制存档码」复制文本）；<br>
+      ② 把它传到另一台设备（邮件 / 网盘 / 发微信给自己）；<br>
+      ③ 在另一台设备打开本游戏，点「📂 导入存档(文件)」选该文件（或「📥 粘贴导入」粘贴存档码），即可继续同一档。<br>
+      <b>注意：</b>两台设备要用<b>同一个版本的 index.html</b>；存档默认存在当前浏览器（localStorage），换浏览器/清缓存会丢，建议常导出备份。
+    </div>
+  </div>`;
+}
+
+function render(){
+  sanitizeLineup();
+  $("#clubName").textContent=G.club;
+  $("#weekVal").textContent=`S${G.season} · 第${Math.min(G.round,G.totalRounds)}轮`;
+  $("#rankVal").textContent=`第 ${myRank()} 名`;
+  const cashEl=$("#cashVal"); cashEl.textContent=eur(G.cash); cashEl.className="val "+(G.cash<0?"neg":"gold");
+  $("#networthVal").textContent=eur(networth());
+  $("#wageVal").textContent=eur(wageBill());
+  $("#nextBtn").disabled=G.finished;
+  const _mid=pendingMid();
+  $("#nextBtn").textContent=G.finished?"赛季已结束":((_mid&&!G.midweekDone)?`${_mid.label} ▶`:"下一轮 ▶");
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===G.tab));
+  const v=$("#view");
+  v.innerHTML = G.tab==="squad"?viewSquad() : G.tab==="market"?viewMarket() : G.tab==="rivals"?viewRivals() : G.tab==="scout"?viewScout()
+    : G.tab==="train"?viewTraining() : G.tab==="academy"?viewAcademy() : G.tab==="biz"?viewBusiness() : G.tab==="national"?viewNational2() : G.tab==="conti"?viewConti() : G.tab==="cal"?viewCalendar() : G.tab==="league"?viewLeague2() : G.tab==="news"?viewNews() : viewMenu();
+}
+function switchTab(t){ G.tab=t; save(); render(); }
+
+// ======================= 租借 / 赞助 / 挖角 / 国家队 =======================
+// ---------- 租借（出租球员） ----------
+function loanWageBill(){ return round2((G.loans||[]).reduce((a,o)=>a+(o.p.wage||0)*0.4,0)); }
+function loanOut(id){
+  const i=G.squad.findIndex(p=>p.id===id); if(i<0) return;
+  if(G.squad.length<=11){ toast("阵容不能少于 11 人"); return; }
+  const p=G.squad[i];
+  const club=pick(rivalClubs()).name;
+  const fee=round1(Math.max(0.1,p.value*0.05));
+  G.cash=round1(G.cash+fee);
+  removeFromLineup(id); untrain(id);
+  G.offers=(G.offers||[]).filter(o=>o.playerId!==id);
+  G.squad.splice(i,1);
+  G.loans.push({p, club});
+  toast(`${p.name} 租借至 ${club}（租借费 ${eur(fee)}，对方付60%周薪，赛季末归队）`);
+  pushNews(`🤝 <b>${p.name}</b> 租借加盟 <b>${club}</b>，将获得稳定出场、赛季末归队。`,"good");
+  save(); render();
+}
+function recallLoan(id){
+  const i=G.loans.findIndex(o=>o.p.id===id); if(i<0) return;
+  if(G.squad.length>=25){ toast("阵容已满，无法召回"); return; }
+  const p=G.loans[i].p; p.owned=true; p.wage=wageDemand(p.ovr); if(!p.contractYears)p.contractYears=1;
+  G.squad.push(p); G.loans.splice(i,1);
+  toast(`${p.name} 提前召回`); save(); render();
+}
+function renderLoans(){
+  if(!G.loans||!G.loans.length) return "";
+  return `<div class="panel"><h2>🤝 租借在外 <span class="hint">（赛季末自动归队，期间你只付 40% 周薪）</span></h2>
+    ${G.loans.map(o=>`<div class="negbox"><div class="l"><span>${NATIONS[o.p.nat].flag} <b>${o.p.name}</b> · ${POS_CN[o.p.pos]} ${o.p.ovr} → <b>${o.club}</b></span><span class="hint">你付 ${eur(round2(o.p.wage*0.4))}/轮</span></div><div style="margin-top:6px"><button class="btn sm ghost" onclick="recallLoan(${o.p.id})">提前召回</button></div></div>`).join("")}
+  </div>`;
+}
+// ---------- 赞助 ----------
+const SPONSOR_NAMES=["远东航空","北辰银行","蓝鲸保险","云图科技","赤岭能源","海格汽车","星汉手机","绿源饮料","金沙地产","环宇物流","昆仑石油","天枢传媒"];
+const SPONSOR_SUFFIX=["","控股","集团","国际"];
+function genSponsorOffers(){
+  G.sponsorOffers=[];
+  for(let i=0;i<3;i++){
+    const tier=clamp(Math.round((G.rep||50)/25)+rint(0,1),1,4);
+    G.sponsorOffers.push({name:pick(SPONSOR_NAMES)+pick(SPONSOR_SUFFIX), per:round2(tier*rnd(0.15,0.3)), signOn:round1(tier*rnd(3,6)), seasons:rint(1,3)});
+  }
+}
+function signSponsor(idx){
+  if((G.sponsors||[]).length>=3){ toast("赞助商名额已满（最多3个）"); return; }
+  const o=G.sponsorOffers[idx]; if(!o) return;
+  G.cash=round1(G.cash+o.signOn);
+  G.sponsors.push({name:o.name, per:o.per, seasonsLeft:o.seasons});
+  G.sponsorOffers.splice(idx,1);
+  toast(`签约 ${o.name}（签约金 ${eur(o.signOn)}，每轮 +${eur(o.per)}）`);
+  pushNews(`💼 签约赞助商 <b>${o.name}</b>：签约金 ${eur(o.signOn)}，每轮收入 +${eur(o.per)}。`,"good");
+  save(); render();
+}
+function sponsorIncome(){ return round2((G.sponsors||[]).reduce((a,s)=>a+s.per,0)); }
+function viewBusiness(){
+  const jobs=(G.jobOffers||[]).map(o=>`<div class="negbox"><div class="l"><span>🏛️ <b>${o.club}</b>${o.real?` <span class="real">(${o.real})</span>`:""} 想聘请你为主帅（实力 ${o.str}）</span></div><div style="display:flex;gap:6px;margin-top:8px"><button class="btn sm" onclick="acceptJob('${o.club}')">接受执教</button><button class="btn sm ghost" onclick="declineJob('${o.club}')">婉拒</button></div></div>`).join("")||`<div class="hint">暂无邀请。带队成绩越好、声望越高，越容易被大俱乐部挖角。</div>`;
+  const active=(G.sponsors||[]).map(s=>`<div class="negbox"><div class="l"><span>💼 <b>${s.name}</b></span><span>+${eur(s.per)}/轮 · 剩 ${s.seasonsLeft} 季</span></div></div>`).join("")||`<div class="hint">暂无赞助商。</div>`;
+  const offers=(G.sponsorOffers||[]).map((o,i)=>`<div class="negbox"><div class="l"><span>💼 <b>${o.name}</b></span><span>签约金 ${eur(o.signOn)} · +${eur(o.per)}/轮 · ${o.seasons}季</span></div><div style="margin-top:8px"><button class="btn sm" onclick="signSponsor(${i})">签约</button></div></div>`).join("")||`<div class="hint">暂无可签约赞助（每赛季刷新）。</div>`;
+  return `
+  <div class="panel"><h2>💼 经营</h2>
+    <div class="squadsum">
+      <div class="ring"><span class="num">${Math.round(G.rep||50)}</span><span class="lbl">声望</span></div>
+      <div class="ring"><span class="num">${eur(sponsorIncome())}</span><span class="lbl">赞助/轮</span></div>
+      <div class="ring"><span class="num">${(G.sponsors||[]).length}/3</span><span class="lbl">赞助商</span></div>
+    </div>
+    <div class="hint">声望来自联赛战绩与国家队成绩，影响挖角邀请与赞助档次。赞助每轮带来现金收入。</div>
+  </div>
+  <div class="panel"><h2>📈 执教邀请（挖角）</h2>${jobs}</div>
+  <div class="panel"><h2>🤝 当前赞助商</h2>${active}</div>
+  <div class="panel"><h2>✍️ 可签约赞助 <span class="hint">（最多 3 个，赛季末刷新）</span></h2>${offers}</div>`;
+}
+// ---------- 挖角 / 换帅 ----------
+function genJobOffers(rank){
+  G.jobOffers=[];
+  if(rank<=3 || (G.rep||50)>=65){
+    const myOvr=teamRatings().ovr;
+    const bigger=rivalClubs().filter(c=>clubStr(c)>myOvr+1).sort((a,b)=>clubStr(b)-clubStr(a));
+    const pool=bigger.length?bigger:rivalClubs().slice().sort((a,b)=>clubStr(b)-clubStr(a));
+    const n=rank===1?2:1;
+    for(let i=0;i<n && i<pool.length;i++){ const c=pool[i]; G.jobOffers.push({club:c.name, real:c.real, str:Math.round(clubStr(c))}); }
+    if(G.jobOffers.length) pushNews(`📈 你的执教受到关注：${G.jobOffers.map(o=>o.club).join("、")} 有意邀请你执教（见「经营」）。`,"good");
+  }
+}
+function declineJob(clubName){ G.jobOffers=(G.jobOffers||[]).filter(o=>o.club!==clubName); toast("已婉拒"); pushNews(`你婉拒了 ${clubName}，继续留守 ${G.club}。`,"match"); save(); render(); }
+function acceptJob(clubName){
+  const ri=G.table.findIndex(t=>t.name===clubName); if(ri<0) return;
+  const R=ensureSquad(G.table[ri]), you=G.table.find(t=>t.you), oldDiv=you.div, oldCountry=G.country, oldConf=G.conf;
+  const oldName=G.club, oldSquad=G.squad;
+  R.squad.forEach(p=>{ p.owned=true; p.starter=false; p.buyPrice=p.value; p.wage=wageDemand(p.ovr); p.contractYears=rint(2,4); });
+  G.squad=R.squad;
+  you.name=R.name; you.real=R.real; you.div=R.div; you.country=R.country; you.conf=R.conf;
+  G.club=R.name; G.country=R.country; G.conf=R.conf;
+  oldSquad.forEach(p=>{ p.owned=false; p.starter=false; p.wage=0; p.contractYears=0; });
+  G.table[ri]={name:oldName, real:null, str:0, squad:oldSquad, tactic:pick(TACTIC_KEYS), country:oldCountry, conf:oldConf, div:oldDiv, P:R.P,W:R.W,D:R.D,L:R.L,GF:R.GF,GA:R.GA,pts:R.pts, you:false};
+  G.training=[]; G.loans=[]; G.offers=[]; G.jobOffers=[]; G.lineup=[]; autoLineup();
+  if(G.conti) G.conti.comp=null;
+  buildSchedules(); G.leagueViewDiv=myDiv(); G.leagueViewCountry=G.country; G.rivalViewCountry=G.country;
+  G.rep=clamp((G.rep||50)+5,0,100);
+  G.table.forEach(t=>{ if(!t.you) t.str=round1(clubStr(t)); });
+  toast(`你已成为 ${G.club} 的主帅！`);
+  pushNews(`🎉 你接受邀请，正式执教 <b>${G.club}</b>！原俱乐部 ${oldName} 另寻主帅。`,"good");
+  save(); render();
+}
+// ---------- 国家队 ----------
+function ntPool(nat){ return allPlayers().filter(p=>p.nat===nat).concat((G.loans||[]).map(o=>o.p).filter(p=>p.nat===nat)); }
+function ntStrength(nat){ const a=ntPool(nat).sort((x,y)=>y.ovr-x.ovr).slice(0,11); return a.length? a.reduce((s,p)=>s+p.ovr,0)/a.length : 50; }
+function appointNational(nat){ if(!G.national) G.national={nation:null,titles:0,tactic:"平衡",invites:[],comp:null,nextStage:"contQual"}; G.national.nation=nat||null; save(); render(); }
+// 洲际归属
+const POOL_CONF={brazil:"南美",argentina:"南美",latin:"南美",mexico:"中北美",usa:"中北美",france:"欧洲",england:"欧洲",spain:"欧洲",germany:"欧洲",portugal:"欧洲",netherlands:"欧洲",italy:"欧洲",belgium:"欧洲",britIsles:"欧洲",germanic:"欧洲",nordic:"欧洲",eastEurope:"欧洲",balkan:"欧洲",china:"亚洲",japan:"亚洲",korea:"亚洲",mideast:"亚洲",seAsia:"亚洲",southAsia:"亚洲",westAfrica:"非洲",northAfrica:"非洲",oceania:"大洋洲"};
+const CURATED_POOL={"巴西":"brazil","阿根廷":"argentina","法国":"france","英格兰":"england","西班牙":"spain","德国":"germany","葡萄牙":"portugal","荷兰":"netherlands","意大利":"italy","比利时":"belgium","日本":"japan","韩国":"korea"};
+function confOf(nat){ if(nat==="土耳其")return "欧洲"; if(nat==="澳大利亚")return "亚洲"; const d=NATIONS[nat]||{}; const pool=d.pool||CURATED_POOL[nat]; return POOL_CONF[pool]||"欧洲"; }
+const NT_STAGES={
+  contQual:{name:"洲际杯预选赛", qual:true, n:6, next:"cont", nextFail:"wcQual"},
+  cont:{name:"洲际杯决赛圈", rounds:["八强","半决赛","决赛"], next:"wcQual"},
+  wcQual:{name:"世界杯预选赛", qual:true, n:6, next:"wc", nextFail:"contQual"},
+  wc:{name:"世界杯决赛圈", rounds:["十六强","八强","半决赛","决赛"], next:"contQual"},
+};
+function genNTInvites(){
+  if(!G.national) return;
+  const cap=45+(G.rep||50)*0.5;
+  let elig=NAT_KEYS.filter(k=>ntStrength(k)<=cap);
+  if(elig.length<3) elig=NAT_KEYS.slice();
+  G.national.invites=elig.sort(()=>Math.random()-0.5).slice(0,3);
+}
+function acceptNTInvite(nat){ G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; toast(`你已出任 ${nat} 国家队主帅`); pushNews(`🌐 你接受邀请，出任 <b>${NATIONS[nat].flag}${nat}</b> 国家队主帅！`,"good"); save(); render(); }
+function resignNT(){ const n=G.national.nation; G.national.nation=null; G.national.comp=null; genNTInvites(); toast("已卸任国家队"); if(n) pushNews(`你卸任了 ${n} 国家队主帅。`,"match"); save(); render(); }
+function setNtTactic(t){ if(!TACTICS[t])return; G.national.tactic=t; save(); render(); }
+function ntTacticBonus(myStr,oppStr){ const t=G.national.tactic||"平衡"; let att=0,def=0;
+  if(t==="防守反击"){ def+=3; att+=clamp((oppStr-myStr)*0.15,0,4); }
+  else if(t==="高位压迫"){ att+=2; def-=1; }
+  else if(t==="边路传中"||t==="中路渗透"||t==="长传冲吊"){ att+=2; }
+  return {att,def};
+}
+function startStage(stage){
+  const my=G.national.nation; if(!my) return;
+  const st=NT_STAGES[stage]; if(!st) return;
+  let fixtures=[];
+  if(st.qual){
+    let pool=NAT_KEYS.filter(k=>k!==my && (stage==="contQual"? confOf(k)===confOf(my):true));
+    if(pool.length<st.n) pool=NAT_KEYS.filter(k=>k!==my);
+    fixtures=pool.sort(()=>Math.random()-0.5).slice(0,st.n).map(opp=>({opp,round:"小组赛"}));
+  } else {
+    const ranked=NAT_KEYS.filter(k=>k!==my).sort((a,b)=>ntStrength(b)-ntStrength(a));
+    fixtures=st.rounds.map((r,i)=>({opp:ranked[Math.min(i*2,ranked.length-1)],round:r}));
+  }
+  G.national.comp={stage, fixtures:fixtures.map(f=>({...f,played:false,mg:0,og:0,win:false,draw:false})), idx:0, done:false, outcome:"", nextStage:st.next};
+  save(); render();
+}
+function playNTMatch(){
+  const c=G.national.comp; if(!c||c.done) return;
+  const f=c.fixtures[c.idx]; if(!f||f.played) return;
+  const my=G.national.nation, myStr=ntStrength(my), oppStr=ntStrength(f.opp);
+  const tb=ntTacticBonus(myStr,oppStr);
+  let mxg=clamp((myStr+tb.att-oppStr)/9+1.35,0.2,5.2), oxg=clamp((oppStr-(myStr+tb.def))/9+1.35,0.2,5.2);
+  if((G.national.tactic||"平衡")==="高位压迫"){ mxg*=1.06; oxg*=1.10; }
+  let mg=samplePoisson(mxg), og=samplePoisson(oxg);
+  const st=NT_STAGES[c.stage];
+  f.played=true; f.mg=mg; f.og=og;
+  if(st.qual){
+    f.win=mg>og; f.draw=mg===og; c.idx++;
+    if(c.idx>=c.fixtures.length){ const pts=c.fixtures.reduce((a,x)=>a+(x.mg>x.og?3:x.mg===x.og?1:0),0); c.done=true; finishStage(c, pts>=st.n); }
+  } else {
+    let win=mg>og || (mg===og && (myStr+rnd(0,3))>=(oppStr+rnd(0,3)));
+    if(mg===og){ if(win) f.mg=mg+1; else f.og=og+1; }
+    f.win=win;
+    if(win){ c.idx++; if(c.idx>=c.fixtures.length){ c.done=true; finishStage(c,true,true); } }
+    else { c.done=true; finishStage(c,false,false); }
+  }
+  if(!c.done) toast(`${my} ${f.mg}-${f.og} ${f.opp}`);
+  save(); render();
+}
+function finishStage(c, success, champion){
+  const my=G.national.nation, st=NT_STAGES[c.stage]; let rep=0,cash=0,msg="";
+  if(st.qual){
+    if(success){ rep=4; cash=6; msg=`${st.name} 晋级 ✅`; c.nextStage=st.next; }
+    else { rep=1; cash=2; msg=`${st.name} 出局`; c.nextStage=st.nextFail; }
+  } else {
+    if(champion){ const w=c.stage==="wc"; rep=w?20:12; cash=w?40:25; G.national.titles=(G.national.titles||0)+1; msg=`${st.name} 夺冠 🏆`; allPlayers().filter(p=>p.nat===my).forEach(p=>p.formIdx=clamp(p.formIdx+1,0,4)); }
+    else { const round=(c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"; const fin=round==="决赛"; rep=fin?7:4; cash=fin?14:8; msg=`${st.name} 止步${round}`; }
+    c.nextStage=st.next;
+  }
+  G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
+  c.outcome=`${msg}（声望 +${rep}，奖金 +${eur(cash)}）`;
+  pushNews(`🌐 ${NATIONS[my].flag}${my}：${c.outcome}`,"good");
+}
+// ======================= 洲际俱乐部杯赛（D-2） =======================
+const CONTI={
+  "欧洲":{tiers:[
+    {name:"欧洲冠军联赛",short:"欧冠",field:36,base:82,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"欧洲联赛",short:"欧联",field:36,base:76,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"欧洲协会联赛",short:"欧会",field:36,base:70,ko:["八强","半决赛","决赛"]},
+  ]},
+  "亚洲":{tiers:[
+    {name:"亚冠精英联赛",short:"亚冠",field:24,base:78,ko:["八强","半决赛","决赛"]},
+    {name:"亚冠二级联赛",short:"亚冠2",field:32,base:72,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"亚足联挑战联赛",short:"挑战赛",field:20,base:66,ko:["八强","半决赛","决赛"]},
+  ]},
+  "非洲":{tiers:[
+    {name:"非洲冠军联赛",short:"非冠",field:64,base:74,ko:["八强","半决赛","决赛"]},
+    {name:"非洲联盟杯",short:"联盟杯",field:56,base:68,ko:["八强","半决赛","决赛"]},
+  ]},
+  "南美":{tiers:[
+    {name:"南美解放者杯",short:"解放者",field:47,base:80,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"南美俱乐部杯",short:"南美杯",field:44,base:73,ko:["十六强","八强","半决赛","决赛"]},
+  ]},
+  "中北美":{tiers:[ {name:"中北美冠军杯",short:"中北美",field:27,base:72,ko:["八强","半决赛","决赛"]} ]},
+  "大洋洲":{tiers:[ {name:"大洋洲冠军联赛",short:"大洋洲",field:16,base:62,ko:["半决赛","决赛"]} ]},
+};
+function contiTiers(){ return (CONTI[G.conf]||CONTI["欧洲"]).tiers; }
+function qualifyTier(rank, div){ if(div!==0) return null; const tiers=contiTiers(); let t=rank<=4?0:rank<=6?1:rank<=7?2:null; return t==null?null:Math.min(t,tiers.length-1); }
+function mkContiOpp(tier){
+  let pool=G.table.filter(c=>!c.you && c.conf===G.conf && c.country!==G.country);
+  if(!pool.length) pool=G.table.filter(c=>!c.you && c.conf===G.conf);
+  if(pool.length){ const c=pick(pool); return {name:c.name, oppStr:clamp(Math.round((clubStr(c)+tier.base)/2+rnd(-3,4)),55,92)}; }
+  const nat="法国"; return {name:(NATIONS[nat]?NATIONS[nat].flag:"")+genClubName(new Set()), oppStr:clamp(Math.round(tier.base+rnd(-6,6)),55,92)};
+}
+function mkContiFix(tier,round){ const o=mkContiOpp(tier); return {opp:o.name, oppStr:o.oppStr, round, played:false, mg:0, og:0, win:false, draw:false}; }
+function startConti(){
+  if(G.conti.tier==null){ toast("本赛季没有洲际参赛资格"); return; }
+  const tier=contiTiers()[G.conti.tier];
+  const lg=[]; for(let i=0;i<4;i++) lg.push(mkContiFix(tier,"联赛阶段"));
+  G.conti.comp={tierIdx:G.conti.tier, stage:'league', fixtures:lg, idx:0, done:false, outcome:""};
+  pushNews(`🌍 ${tier.name} 开赛（联赛阶段：4 场拿满 4 分即可出线）。`,"good");
+  save(); render();
+}
+function playContiMatch(){
+  const c=G.conti.comp; if(!c||c.done) return;
+  const f=c.fixtures[c.idx]; if(!f||f.played) return;
+  const r=teamRatings(); if(r.count!==11||!r.hasGK){ toast("先在「我的阵容」排好 11 人首发（含门将）"); switchTab("squad"); return; }
+  const tm=tacticMods(r,f.oppStr);
+  let mxg=clamp((r.att*tm.att-f.oppStr)/9+1.35,0.2,5.2), oxg=clamp((f.oppStr-r.def*tm.def)/9+1.35,0.2,5.2);
+  if((G.tactic||"平衡")==="高位压迫"){ mxg*=1.06; oxg*=1.10; }
+  let mg=samplePoisson(mxg), og=samplePoisson(oxg);
+  f.played=true; f.mg=mg; f.og=og;
+  const tier=contiTiers()[c.tierIdx];
+  if(c.stage==='league'){
+    f.win=mg>og; f.draw=mg===og; c.idx++;
+    if(c.idx>=c.fixtures.length){
+      const pts=c.fixtures.reduce((a,x)=>a+(x.mg>x.og?3:x.mg===x.og?1:0),0);
+      if(pts>=4){ c.stage='ko'; c.idx=0; c.fixtures=tier.ko.map(rd=>mkContiFix(tier,rd)); pushNews(`🌍 ${tier.name}：小组出线，进入淘汰赛！`,"good"); }
+      else { c.done=true; finishConti(c,false); }
+    }
+  } else {
+    let win=mg>og || (mg===og && (r.ovr+rnd(0,3))>=(f.oppStr+rnd(0,3)));
+    if(mg===og){ if(win) f.mg=mg+1; else f.og=og+1; }
+    f.win=win;
+    if(win){ c.idx++; if(c.idx>=c.fixtures.length){ c.done=true; finishConti(c,true); } }
+    else { c.done=true; finishConti(c,false); }
+  }
+  if(!c.done) toast(`${G.club} ${f.mg}-${f.og}`);
+  save(); render();
+}
+function finishConti(c, champion){
+  const tier=contiTiers()[c.tierIdx]; let rep=0,cash=0,msg="";
+  if(champion){ rep=tier.base>=80?18:tier.base>=72?13:9; cash=tier.base>=80?40:tier.base>=72?26:16; G.conti.titles=(G.conti.titles||0)+1; msg=`${tier.name} 夺冠 🏆`; }
+  else if(c.stage==='ko'){ const round=(c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"; const fin=round==="决赛"; rep=fin?9:5; cash=fin?16:8; msg=`${tier.name} 止步${round}`; }
+  else { rep=3; cash=6; msg=`${tier.name} 联赛阶段出局`; }
+  G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
+  c.outcome=`${msg}（声望 +${rep}，奖金 +${eur(cash)}）`;
+  pushNews(`🌍 ${c.outcome}`,"good");
+}
+function viewConti(){
+  const ti=G.conti.tier, tiers=contiTiers(), c=G.conti.comp;
+  const structure=tiers.map(t=>`${t.name}（${t.short}·${t.field}队）`).join(" · ");
+  let body="";
+  if(ti==null && !c){
+    body=`<div class="hint">本赛季<b>无洲际资格</b>。在甲级联赛取得好成绩可获下赛季资格：前4名→第1级，5-6名→第2级，第7名→第3级。</div>`;
+  } else if(!c){
+    body=`<div class="hint" style="margin-bottom:6px">本赛季资格：<b>${tiers[ti].name}</b>（${tiers[ti].field} 队参赛）。</div><button class="btn big" onclick="startConti()">开始 ${tiers[ti].name}</button>`;
+  } else {
+    const tier=tiers[c.tierIdx];
+    const rows=c.fixtures.map((f,i)=>{ const cur=(i===c.idx && !c.done && !f.played); const res=f.played?`<b>${f.mg}-${f.og}</b> ${f.win?'胜':(f.draw?'平':'负')}`:(cur?'<span style="color:var(--accent)">下一场 ▶</span>':'未赛'); return `<div class="l"><span>${f.round} vs ${f.opp} (${f.oppStr})</span><span>${res}</span></div>`; }).join("");
+    body=`<div class="hint" style="margin-bottom:6px">${tier.name} · ${c.stage==='league'?'联赛阶段（4场拿4分出线）':'淘汰赛'}</div><div class="negbox">${rows}</div>`;
+    if(c.done) body+=`<div class="hint" style="margin:8px 0">${c.outcome}</div><div class="hint">下赛季资格将按本赛季联赛排名重新确定。</div>`;
+    else body+=`<div class="hint" style="margin-top:8px">下一场将通过顶部「下一场」按钮进行，与联赛/杯赛自动穿插。</div>`;
+  }
+  return `<div class="panel"><h2>🌍 洲际俱乐部杯赛 <span class="hint">（${G.conf}）</span></h2>
+    <div class="squadsum">
+      <div class="ring"><span class="num" style="font-size:15px">${G.conf}</span><span class="lbl">所属洲</span></div>
+      <div class="ring"><span class="num">${G.conti.titles||0}</span><span class="lbl">洲际冠军</span></div>
+      <div class="ring"><span class="num" style="font-size:14px">${ti!=null?tiers[ti].short:"无"}</span><span class="lbl">本赛季资格</span></div>
+    </div>
+    <div class="hint">${G.conf} 赛事体系：${structure}。对手来自本洲其它国家的俱乐部（带国旗），强度按级别生成。比赛使用你俱乐部的首发阵容与战术。</div>
+  </div>
+  <div class="panel"><h2>🏆 本赛季赛程</h2>${body}</div>`;
+}
+// ======================= 国内杯 / 日历 / 数据榜 / 统一推进 =======================
+const CUP_ROUNDS=["十六强","八强","半决赛","决赛"];
+function startCup(){
+  const pool=G.table.filter(c=>c.country===G.country && !c.you);
+  if(!pool.length){ G.cup=null; return; }
+  G.cup={fixtures:CUP_ROUNDS.map((r,i)=>{ const c=pick(pool); return {opp:c.name, oppStr:Math.round(clubStr(c)+i+rnd(-3,3)), round:r, played:false, mg:0, og:0, win:false}; }), idx:0, done:false, outcome:""};
+}
+function playCupMatch(){
+  const c=G.cup; if(!c||c.done) return;
+  const f=c.fixtures[c.idx]; if(!f||f.played) return;
+  const r=teamRatings(); if(r.count!==11||!r.hasGK){ toast("先排好首发 11 人（含门将）"); switchTab("squad"); return; }
+  const tm=tacticMods(r,f.oppStr);
+  let mxg=clamp((r.att*tm.att-f.oppStr)/9+1.35,0.2,5.2), oxg=clamp((f.oppStr-r.def*tm.def)/9+1.35,0.2,5.2);
+  let mg=samplePoisson(mxg), og=samplePoisson(oxg);
+  f.played=true; f.mg=mg; f.og=og;
+  let win=mg>og || (mg===og && (r.ovr+rnd(0,3))>=(f.oppStr+rnd(0,3)));
+  if(mg===og){ if(win) f.mg=mg+1; else f.og=og+1; }
+  f.win=win;
+  if(win){ c.idx++; if(c.idx>=c.fixtures.length){ c.done=true; finishCup(true); } }
+  else { c.done=true; finishCup(false); }
+  if(!c.done) toast(`🏆 国内杯 ${G.club} ${f.mg}-${f.og} ${f.opp}`);
+  save(); render();
+}
+function finishCup(champ){
+  const rep=champ?10:5, cash=champ?18:6;
+  const msg=champ?"国内杯 夺冠 🏆":`国内杯 止步${(G.cup.fixtures[G.cup.idx]&&G.cup.fixtures[G.cup.idx].round)||"决赛"}`;
+  G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
+  G.cup.outcome=`${msg}（声望+${rep}，奖金+${eur(cash)}）`;
+  pushNews(`🏆 ${G.cup.outcome}`,"good");
+}
+// 进球/助攻归属（仅本国本级别联赛比赛，用于数据榜）
+function creditGoals(sq, n){
+  if(!sq||!sq.length||!n) return;
+  const pool=sq.filter(p=>!p.injured); if(!pool.length) return;
+  const wt=p=>p.pos==="FW"?5:p.pos==="MF"?3:p.pos==="DF"?1:0.3;
+  for(let i=0;i<n;i++){
+    const scorer=weightedPick(pool.map(p=>[p,wt(p)])); scorer.gls=(scorer.gls||0)+1;
+    if(Math.random()<0.6){ const others=pool.filter(p=>p!==scorer); if(others.length){ const a=weightedPick(others.map(p=>[p,wt(p)])); a.ast=(a.ast||0)+1; } }
+  }
+}
+function statRows(){
+  const rows=[]; G.squad.forEach(p=>rows.push({p, club:G.club}));
+  leagueClubs(G.country, myDiv()).forEach(c=>{ if(!c.you && c.squad) c.squad.forEach(p=>rows.push({p, club:c.name})); });
+  return rows;
+}
+function statBoards(vc,vd){
+  if(vc!==G.country || vd!==myDiv()) return "";
+  const rows=statRows();
+  const sc=[...rows].filter(o=>o.p.gls).sort((a,b)=>(b.p.gls-a.p.gls)||((b.p.ast||0)-(a.p.ast||0))).slice(0,12);
+  const as=[...rows].filter(o=>o.p.ast).sort((a,b)=>(b.p.ast-a.p.ast)||((b.p.gls||0)-(a.p.gls||0))).slice(0,12);
+  const line=(o,v)=>`<div class="l"><span>${NATIONS[o.p.nat]?NATIONS[o.p.nat].flag:""} ${o.p.name} <span class="real">${o.club}</span></span><b>${v}</b></div>`;
+  return `<div class="panel"><h2>📊 数据榜 <span class="hint">（${flagOf(vc)}${vc} ${DIV_NAMES[vd]||''}）</span></h2>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px"><div class="hint" style="margin-bottom:4px">⚽ 射手榜</div><div class="negbox">${sc.length?sc.map(o=>line(o,o.p.gls)).join(""):'<div class="hint">暂无</div>'}</div></div>
+      <div style="flex:1;min-width:220px"><div class="hint" style="margin-bottom:4px">🅰️ 助攻榜</div><div class="negbox">${as.length?as.map(o=>line(o,o.p.ast)).join(""):'<div class="hint">暂无</div>'}</div></div>
+    </div></div>`;
+}
+// 统一推进：杯赛/洲际/国家队 比赛穿插进联赛周
+function pendingMid(){
+  const cc=G.conti&&G.conti.comp; if(cc&&!cc.done&&cc.fixtures[cc.idx]&&!cc.fixtures[cc.idx].played) return {type:"conti", play:playContiMatch, label:`🌍 洲际杯 ${cc.fixtures[cc.idx].round}`};
+  const cu=G.cup; if(cu&&!cu.done&&cu.fixtures[cu.idx]&&!cu.fixtures[cu.idx].played) return {type:"cup", play:playCupMatch, label:`🏆 国内杯 ${cu.fixtures[cu.idx].round}`};
+  const nt=G.national&&G.national.comp; if(nt&&!nt.done&&nt.fixtures[nt.idx]&&!nt.fixtures[nt.idx].played) return {type:"nt", play:playNTMatch, label:`🌐 国家队 ${nt.fixtures[nt.idx].round}`};
+  return null;
+}
+function advance(){
+  if(G.finished) return;
+  const mid=pendingMid();
+  if(mid && !G.midweekDone){
+    if(mid.type!=="nt"){ const r=teamRatings(); if(r.count!==11||!r.hasGK){ toast("需要 11 名首发（含门将）"); switchTab("squad"); return; } }
+    G.midweekDone=true; mid.play(); return;
+  }
+  G.midweekDone=false; nextRound();
+}
+function viewCalendar(){
+  const myD=myDiv(); const myLeague=G.leagueScheds.find(s=>s.country===G.country&&s.div===myD);
+  const youIdx=G.table.findIndex(t=>t.you);
+  let upcoming="";
+  if(myLeague) for(let k=0;k<6;k++){ const r=G.round+k; if(r>G.totalRounds) break;
+    const pairs=myLeague.sched[(r-1)%G.totalRounds]||[]; const pr=pairs.find(p=>p[0]===youIdx||p[1]===youIdx);
+    if(pr){ const oi=pr[0]===youIdx?pr[1]:pr[0]; upcoming+=`<div class="l"><span>第 ${r} 轮 · 联赛</span><span>vs ${G.table[oi].name} (${Math.round(clubStr(G.table[oi]))})</span></div>`; }
+  }
+  const mids=[]; const cc=G.conti&&G.conti.comp, cu=G.cup, nt=G.national&&G.national.comp;
+  if(cc&&!cc.done&&cc.fixtures[cc.idx]) mids.push(`🌍 洲际杯 ${cc.fixtures[cc.idx].round} vs ${cc.fixtures[cc.idx].opp}`);
+  if(cu&&!cu.done&&cu.fixtures[cu.idx]) mids.push(`🏆 国内杯 ${cu.fixtures[cu.idx].round} vs ${cu.fixtures[cu.idx].opp}`);
+  if(nt&&!nt.done&&nt.fixtures[nt.idx]) mids.push(`🌐 国家队 ${nt.fixtures[nt.idx].round} vs ${NATIONS[nt.fixtures[nt.idx].opp]?NATIONS[nt.fixtures[nt.idx].opp].flag:''}${nt.fixtures[nt.idx].opp}`);
+  const cupHTML=G.cup? G.cup.fixtures.map((f,i)=>`<div class="l"><span>${f.round} vs ${f.opp}</span><span>${f.played?`<b>${f.mg}-${f.og}</b> ${f.win?'胜':'负'}`:(i===G.cup.idx&&!G.cup.done?'<span style="color:var(--accent)">待战 ▶</span>':'未赛')}</span></div>`).join("") : '<div class="hint">本赛季无杯赛</div>';
+  return `<div class="panel"><h2>📅 赛程日历 <span class="hint">点顶部「下一场」自动推进，杯赛/洲际/国家队与联赛交替穿插</span></h2>
+    <div class="hint" style="margin-bottom:6px">穿插待战（在联赛周之间进行）：</div>
+    ${mids.length?`<div class="negbox">${mids.map(m=>`<div class="l"><span>${m}</span><span style="color:var(--accent)">穿插</span></div>`).join("")}</div>`:'<div class="hint">暂无（去「🌍洲际杯 / 🌐国家队」开启赛事；国内杯每季自动进行）</div>'}
+  </div>
+  <div class="panel"><h2>📋 接下来的联赛对手</h2><div class="negbox">${upcoming||'<div class="hint">本赛季联赛已结束</div>'}</div></div>
+  <div class="panel"><h2>🏆 国内杯</h2><div class="negbox">${cupHTML}</div>${G.cup&&G.cup.done?`<div class="hint">${G.cup.outcome}</div>`:""}</div>`;
+}
+function viewNational2(){
+  if(!G.national) G.national={nation:null,titles:0,tactic:"平衡",invites:[],comp:null,nextStage:"contQual"};
+  const N=G.national, my=N.nation;
+  if(!my){
+    const inv=(N.invites||[]).map(k=>`<div class="negbox"><div class="l"><span>${NATIONS[k].flag} <b>${k}</b>（实力约 ${Math.round(ntStrength(k))} · ${confOf(k)}）邀请你执教</span></div><div style="margin-top:8px"><button class="btn sm" onclick="acceptNTInvite('${k}')">接受邀请</button></div></div>`).join("")||`<div class="hint">暂无邀请。提升声望后会有国家队邀请你（声望越高，邀请的球队越强）。</div>`;
+    return `<div class="panel"><h2>🌐 国家队（邀请制）</h2>
+      <div class="hint" style="margin-bottom:6px">国家队主帅为<b>邀请制</b>：随着俱乐部声望提升，会有国家队邀请你执教（声望越高，可执教的球队越强）。任职后与俱乐部工作并行，亲自指挥<b>洲际杯</b>与<b>世界杯</b>的预选赛和决赛圈。</div>
+      ${inv}</div>`;
+  }
+  const c=N.comp, st=c?NT_STAGES[c.stage]:null;
+  const tacticChips=TACTIC_KEYS.map(t=>`<span class="chip ${(N.tactic||"平衡")===t?'active':''}" onclick="setNtTactic('${t}')">${t}</span>`).join("");
+  let campHTML="";
+  if(!c){
+    const ns=N.nextStage||"contQual";
+    campHTML=`<div class="hint" style="margin-bottom:6px">当前无进行中的赛事。</div><button class="btn big" onclick="startStage('${ns}')">开始 ${NT_STAGES[ns].name}</button>`;
+  } else {
+    const rows=c.fixtures.map((f,i)=>{
+      const cur=(i===c.idx && !c.done && !f.played);
+      const res=f.played?`<b>${f.mg}-${f.og}</b> ${f.win?'胜':(f.draw?'平':'负')}`:(cur?'<span style="color:var(--accent)">下一场 ▶</span>':'未赛');
+      return `<div class="l"><span>${f.round} vs ${NATIONS[f.opp].flag}${f.opp} (${Math.round(ntStrength(f.opp))})</span><span>${res}</span></div>`;
+    }).join("");
+    campHTML=`<div class="negbox">${rows}</div>`;
+    if(c.done) campHTML+=`<div class="hint" style="margin:8px 0">${c.outcome}</div><button class="btn big" onclick="startStage('${c.nextStage}')">进入 ${NT_STAGES[c.nextStage].name}</button>`;
+    else campHTML+=`<div class="hint" style="margin-top:8px">下一场将通过顶部「下一场」按钮进行，与联赛自动穿插。</div>`;
+  }
+  const xi=ntPool(my).sort((a,b)=>b.ovr-a.ovr).slice(0,11);
+  return `<div class="panel"><h2>🌐 ${NATIONS[my].flag} ${my} 国家队</h2>
+    <div class="squadsum">
+      <div class="ring"><span class="num">${Math.round(ntStrength(my))}</span><span class="lbl">实力</span></div>
+      <div class="ring"><span class="num">${ntPool(my).length}</span><span class="lbl">可征召</span></div>
+      <div class="ring"><span class="num">${N.titles||0}</span><span class="lbl">冠军</span></div>
+      <div class="ring"><span class="num" style="font-size:15px">${confOf(my)}</span><span class="lbl">所属洲</span></div>
+      <div class="spacer"></div>
+      <button class="btn ghost" onclick="resignNT()">辞去国家队</button>
+    </div>
+    <div class="hint" style="margin:4px 0">国家队战术：</div>
+    <div class="filterbar">${tacticChips}</div>
+  </div>
+  <div class="panel"><h2>🏆 ${st?st.name:"赛事"}</h2>${campHTML}</div>
+  <div class="panel"><h2>征召阵容（最强 11 人）</h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${xi.map(p=>`<div class="pcard"><div class="prow"><span class="pos ${p.pos}">${p.pos}</span><span class="pname">${NATIONS[p.nat].flag} ${p.name}</span><span class="ovr">${p.ovr}</span></div><div class="meta">${p.owned?'<span class="ctr-tag" style="background:#1f3a2a;color:var(--up)">你的球员</span>':'<span class="hint">外部球员</span>'} <span>${p.age}岁</span></div></div>`).join("")}</div>
+  </div>`;
+}
+function playInternational(){
+  if(!G.national.nation){ toast("请先选择并任命一支国家队"); return; }
+  if(G.national.played>=1){ toast("本赛季国际赛事已进行，下赛季再来"); return; }
+  const my=G.national.nation, myStr=ntStrength(my);
+  const others=NAT_KEYS.filter(k=>k!==my).sort(()=>Math.random()-0.5).slice(0,3);
+  const win=(a,b)=>{ const ag=samplePoisson(clamp((a-b)/9+1.4,0.2,5)), bg=samplePoisson(clamp((b-a)/9+1.4,0.2,5)); return ag>=bg; };
+  let result, repGain, cashGain;
+  if(!win(myStr+rnd(-2,2), ntStrength(others[0])+rnd(-2,2))){ result="半决赛出局"; repGain=2; cashGain=4; }
+  else {
+    const fo=ntStrength(others[1])>=ntStrength(others[2])?others[1]:others[2];
+    if(win(myStr+rnd(-2,2), ntStrength(fo)+rnd(-2,2))){ result="夺冠 🏆"; repGain=10; cashGain=18; G.national.titles=(G.national.titles||0)+1; }
+    else { result="亚军 🥈"; repGain=5; cashGain=10; }
+  }
+  G.rep=clamp((G.rep||50)+repGain,0,100); G.cash=round1(G.cash+cashGain); G.national.played=1;
+  allPlayers().filter(p=>p.nat===my).forEach(p=>{ p.formIdx=clamp(p.formIdx+1,0,4); });
+  toast(`国家队赛事：${result}（声望+${repGain}，奖金 ${eur(cashGain)}）`);
+  pushNews(`🌐 ${NATIONS[my].flag}${my}国家队国际赛事：<b>${result}</b>，声望 +${repGain}，奖金 +${eur(cashGain)}。`,"good");
+  save(); render();
+}
+function viewNational(){
+  if(!G.national) G.national={nation:null,played:0,titles:0};
+  const opts=`<option value="">（未任命）</option>`+NAT_KEYS.map(k=>`<option value="${k}" ${G.national.nation===k?"selected":""}>${NATIONS[k].flag} ${k}</option>`).join("");
+  const my=G.national.nation;
+  const xi=my? ntPool(my).sort((a,b)=>b.ovr-a.ovr).slice(0,11):[];
+  return `
+  <div class="panel"><h2>🌐 国家队</h2>
+    <div class="hint" style="margin-bottom:6px">你可同时执教一支国家队（与俱乐部并行）。国家队自动从全世界该国籍球员中征召最强阵容；每赛季可参加一次国际赛事，赢球提升<b>声望</b>、获得奖金，并提升本国球员状态。</div>
+    <div class="field"><label>选择执教的国家队</label>
+      <select onchange="appointNational(this.value)" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px;font-size:14px;width:100%">${opts}</select></div>
+    ${my?`<div class="squadsum">
+      <div class="ring"><span class="num">${Math.round(ntStrength(my))}</span><span class="lbl">国家队实力</span></div>
+      <div class="ring"><span class="num">${ntPool(my).length}</span><span class="lbl">可征召</span></div>
+      <div class="ring"><span class="num">${G.national.titles||0}</span><span class="lbl">夺冠</span></div>
+      <div class="spacer"></div>
+      <button class="btn ${G.national.played?'ghost':'big'}" ${G.national.played?"disabled":""} onclick="playInternational()">${G.national.played?"本赛季已参赛":"⚽ 参加国际赛事"}</button>
+    </div>`:""}
+  </div>
+  ${my&&xi.length?`<div class="panel"><h2>${NATIONS[my].flag} ${my} 征召阵容（最强 11 人）</h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${xi.map(p=>`<div class="pcard"><div class="prow"><span class="pos ${p.pos}">${p.pos}</span><span class="pname">${p.name}</span><span class="ovr">${p.ovr}</span></div><div class="meta">${p.owned?'<span class="ctr-tag" style="background:#1f3a2a;color:var(--up)">你的球员</span>':'<span class="hint">外部球员</span>'} <span>${p.age}岁</span></div></div>`).join("")}</div>
+  </div>`:`<div class="panel"><div class="empty">尚未任命国家队</div></div>`}`;
+}
+
+// ---------- Modal / Toast ----------
+let toastTimer;
+function toast(msg){ const el=$("#toast"); el.innerHTML=msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),2400); }
+function showOverlay(html,center){ const m=$("#modal"); m.className="modal"+(center?" center":""); m.innerHTML=html; $("#overlay").classList.add("show"); }
+function closeOverlay(){ $("#overlay").classList.remove("show"); }
+function showMatchModal(opp,mg,og,res,prize,wb,tac){
+  const txt=res==="W"?"胜利 🎉":res==="L"?"失利 😞":"平局 🤝";
+  showOverlay(`<h2 style="text-align:center">比赛结束</h2>
+    <p style="text-align:center">${G.club} vs ${opp}</p>
+    <div class="score res-${res}">${mg} - ${og}</div>
+    ${tac?`<p style="text-align:center;color:var(--dim);font-size:12px">🎯 ${tac}</p>`:""}
+    <p class="res-${res}" style="font-size:18px;font-weight:700;text-align:center">${txt}</p>
+    <p style="text-align:center">奖金 +${eur(prize)} · 工资 -${eur(wb)} · 当前第 ${myRank()} 名</p>
+    ${G.offers&&G.offers.length?`<p style="text-align:center;color:var(--gold)">📨 ${G.offers.length} 份转会报价待处理（见「我的阵容」）</p>`:""}
+    <button class="btn big" style="margin-top:12px;width:100%" onclick="closeOverlay()">继续</button>`,true);
+}
+function showSeasonModal(rank,bonus){
+  showOverlay(`<h2>第 ${G.season-1} 赛季结束</h2>
+    <div class="score" style="color:var(--gold)">第 ${rank} 名</div>
+    <p>赛季奖金 +${eur(bonus)} · 净资产 ${eur(networth())}</p>
+    <p>新赛季开始，积分清零，球员一年长一岁——年轻人成长、老将衰退。</p>
+    <button class="btn big" style="margin-top:12px;width:100%" onclick="closeOverlay()">进入第 ${G.season} 赛季</button>`,true);
+}
+function showFinalModal(rank){
+  const nw=networth();
+  const grade=nw>800?"传奇 ⚽👑":nw>450?"豪门崛起 🌟":nw>250?"稳健经营 👍":"重在参与 🙂";
+  showOverlay(`<h2>🏁 三个赛季结束！</h2>
+    <div class="score" style="color:var(--gold)">联赛第 ${rank} 名</div>
+    <p>最终净资产</p><div class="score res-W">${eur(nw)}</div>
+    <p style="font-size:18px;font-weight:700;color:var(--accent)">评价：${grade}</p>
+    <button class="btn big" style="margin-top:12px;width:100%" onclick="confirmNewGame()">再来一局</button>`,true);
+}
+
+// ---------- 存档 ----------
+function save(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(G)); }catch(e){} }
+function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.parse(s); if(!G||!G.squad) return false;
+  if(!Array.isArray(G.training)) G.training=[];
+  if(!Array.isArray(G.offers)) G.offers=[];
+  if(!G.coachLevel) G.coachLevel=1;
+  if(!G.trainSlots) G.trainSlots=G.coachLevel+2;
+  if(G.goalRank==null) G.goalRank=5;
+  if(!G.archetype) G.archetype="mid";
+  rivalClubs().forEach(c=>{ if(!c.tactic) c.tactic=pick(TACTIC_KEYS); if(c.squad) c.str=round1(clubStr(c)); });
+  if(G.selRival==null) G.selRival=0;
+  if(!G.tactic) G.tactic="平衡";
+  if(!G.academy) G.academy={level:1, prospects:[]};
+  if(!Array.isArray(G.academy.prospects)) G.academy.prospects=[];
+  if(G.rep==null) G.rep=50;
+  if(!Array.isArray(G.sponsors)) G.sponsors=[];
+  if(!Array.isArray(G.sponsorOffers)) G.sponsorOffers=[];
+  if(!Array.isArray(G.loans)) G.loans=[];
+  if(!Array.isArray(G.jobOffers)) G.jobOffers=[];
+  if(!G.national) G.national={nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual"};
+  if(!Array.isArray(G.national.invites)) G.national.invites=[];
+  if(G.national.comp===undefined) G.national.comp=null;
+  if(!G.national.tactic) G.national.tactic="平衡";
+  if(!G.national.nextStage) G.national.nextStage="contQual";
+  if(!G.national.nation && !G.national.invites.length) genNTInvites();
+  if(!G.conf) G.conf="欧洲";
+  if(!G.conti) G.conti={tier:null, comp:null, titles:0};
+  if(G.cup===undefined) G.cup=null;
+  if(G.midweekDone===undefined) G.midweekDone=false;
+  if(!FORMATIONS[G.formation]) G.formation="4-3-3";
+  if(!G.country) G.country=((G.table.find(t=>t.you)||{}).country)||"英格兰";
+  if(!Array.isArray(G.leagueScheds)) buildSchedules();
+  if(G.leagueViewCountry==null) G.leagueViewCountry=G.country;
+  if(G.leagueViewConf==null) G.leagueViewConf=G.conf;
+  if(G.rivalViewCountry==null) G.rivalViewCountry=G.country;
+  if(G.rivalViewConf==null) G.rivalViewConf=G.conf;
+  if(G.leagueViewDiv==null) G.leagueViewDiv=myDiv();
+  if(!Array.isArray(G.lineup) || !G.lineup.length) autoLineup(); else sanitizeLineup();
+  return true; } }catch(e){} return false; }
+function exportSave(){ const d=localStorage.getItem(SAVE_KEY)||JSON.stringify(G); if(navigator.clipboard){ navigator.clipboard.writeText(d).then(()=>toast("存档码已复制到剪贴板"),()=>importPrompt(d)); } else importPrompt(d); }
+function downloadSave(){
+  try{ const data=localStorage.getItem(SAVE_KEY)||JSON.stringify(G);
+    const blob=new Blob([data],{type:"application/json"}); const url=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=url; a.download=`足球经理存档_${G.club||"team"}_S${G.season}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500);
+    toast("已导出存档文件，去下载文件夹找它");
+  }catch(e){ toast("导出失败，试试复制存档码"); }
+}
+function importSaveClick(){
+  const inp=document.createElement("input"); inp.type="file"; inp.accept=".json,application/json,text/plain";
+  inp.onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>importSaveText(rd.result); rd.readAsText(f); };
+  inp.click();
+}
+function importPrompt(prefill){
+  showOverlay(`<h2>📥 导入存档</h2><p style="color:var(--dim)">把存档码粘贴到下面，点「导入」。也可用「📂 导入存档(文件)」选 .json 文件。</p>
+    <textarea id="impTxt" style="width:100%;height:150px;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px;font-size:11px" placeholder="在此粘贴存档码…">${typeof prefill==="string"?prefill:""}</textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn big" style="flex:1" onclick="importSaveText(document.getElementById('impTxt').value)">导入并继续</button>
+      <button class="btn ghost" style="flex:1" onclick="closeOverlay()">关闭</button>
+    </div>`);
+}
+function importSaveText(str){
+  try{ const obj=JSON.parse(str); if(!obj||!obj.squad||!obj.table){ toast("存档无效或不完整"); return; }
+    localStorage.setItem(SAVE_KEY, typeof str==="string"?str:JSON.stringify(obj));
+    if(load()){ closeOverlay(); G.tab="squad"; render(); toast("✅ 存档导入成功，已切换到该存档！"); }
+    else toast("导入失败：存档结构无法读取");
+  }catch(e){ toast("存档格式错误，无法解析"); }
+}
+function budgetDifficulty(b){ return b<30?"硬核":b<80?"标准":b<160?"充裕":"巨富"; }
+let setupWorld=null;
+function confirmNewGame(){ setupCfg={conf:null, country:null, clubIdx:null, budget:65}; setupWorld=buildWorld(); renderSetup(); }
+function setConf(c){ setupCfg.conf=c; setupCfg.country=null; setupCfg.clubIdx=null; renderSetup(); }
+function setCountry(ct){ setupCfg.country=ct; setupCfg.clubIdx=null; renderSetup(); }
+function setClub(i){ setupCfg.clubIdx=i; renderSetup(); }
+function renderSetup(){
+  const confs=Object.keys(CONTI);
+  const confChips=confs.map(c=>`<span class="chip ${setupCfg.conf===c?'active':''}" onclick="setConf('${c}')">${c}</span>`).join("");
+  let countryBlock="", clubBlock="", budgetBlock="", startBtn="";
+  if(setupCfg.conf){
+    const cs=WORLD_COUNTRIES.filter(w=>w.c===setupCfg.conf);
+    countryBlock=`<div class="field"><label>选择国家</label><div style="display:flex;gap:6px;flex-wrap:wrap">${cs.map(w=>`<span class="chip ${setupCfg.country===w.n?'active':''}" onclick="setCountry('${w.n}')">${flagOf(w.n)}${w.n}</span>`).join("")}</div></div>`;
+  }
+  if(setupCfg.country){
+    const clubs=setupWorld.map((c,i)=>({c,i})).filter(o=>o.c.country===setupCfg.country).sort((a,b)=>a.c.div-b.c.div||b.c.str-a.c.str);
+    clubBlock=`<div class="field"><label>选择执教的俱乐部（实力越高越强；可选低级别/弱队挑战重建）</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:180px;overflow:auto">${clubs.map(o=>`<span class="chip ${setupCfg.clubIdx===o.i?'active':''}" onclick="setClub(${o.i})">${o.c.name} · ${Math.round(o.c.str)} · ${DIV_NAMES[o.c.div]||'联赛'}</span>`).join("")}</div></div>`;
+  }
+  if(setupCfg.clubIdx!=null){
+    budgetBlock=`<div class="field"><label>启动资金（难度）</label>
+      <div class="row"><input type="range" id="setBudget" min="10" max="300" step="5" value="${setupCfg.budget}"
+        oninput="setupCfg.budget=+this.value; document.getElementById('setBudgetV').innerHTML=eur(+this.value)+' · '+budgetDifficulty(+this.value)">
+        <span class="rngval" id="setBudgetV" style="min-width:110px">${eur(setupCfg.budget)} · ${budgetDifficulty(setupCfg.budget)}</span></div></div>`;
+    startBtn=`<button class="btn big" style="width:100%;margin-top:10px" onclick="doNewGame()">执教 ${setupWorld[setupCfg.clubIdx].name} ▶</button>`;
+  }
+  showOverlay(`<h2>🆕 新的征程（选大洲 → 国家 → 俱乐部）</h2>
+    <div class="field"><label>选择所属大洲</label><div style="display:flex;gap:6px;flex-wrap:wrap">${confChips}</div></div>
+    ${countryBlock}${clubBlock}${budgetBlock}${startBtn}`);
+}
+function doNewGame(){
+  if(setupCfg.clubIdx==null){ toast("请先选择执教的俱乐部"); return; }
+  newGame(setupWorld, setupCfg.clubIdx, setupCfg.budget);
+  setupWorld=null; closeOverlay(); G.tab="squad"; render();
+}
+
+// ---------- 事件 ----------
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>switchTab(t.dataset.tab)));
+$("#nextBtn").addEventListener("click",advance);
+$("#overlay").addEventListener("click",e=>{ if(e.target.id==="overlay") closeOverlay(); });
+
+// ---------- 启动 ----------
+if(!load()) confirmNewGame(); else render();
+</script>
+</body>
+</html>
