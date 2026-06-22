@@ -164,6 +164,7 @@
     <div class="tab" data-tab="national">🌐 国家队</div>
     <div class="tab" data-tab="conti">🌍 洲际杯</div>
     <div class="tab" data-tab="cal">📅 日历</div>
+    <div class="tab" data-tab="honors">🏅 荣誉</div>
     <div class="tab" data-tab="league">🏆 联赛积分</div>
     <div class="tab" data-tab="news">📰 新闻</div>
     <div class="spacer"></div>
@@ -443,7 +444,7 @@ function newGame(world, clubIdx, budget){
     offers:[], academy:{level:1, prospects:[], targetNat:null},
     rep:50, sponsors:[], sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
     conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
-    cup:null, wcc:{in:false, comp:null, titles:0}, midweekDone:false,
+    cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false,
     lastWageBill:0, finished:false,
   };
   buildSchedules();
@@ -789,6 +790,7 @@ function endSeason(){
   pushNews(`💰 下赛季董事会拨款：联赛奖金 ${eur(bonus)} + 转会预算 ${eur(transferBudget)}（当前声望 ${Math.round(G.rep)}）。`,"good");
   const metGoal = rank<=G.goalRank;
   pushNews(`🏁 第 ${G.season} 赛季结束！最终第 ${rank} 名（目标前 ${G.goalRank}）— ${metGoal?"达成预期 ✅":"未达预期 ⚠️"}，赛季奖金 +${eur(bonus)}。`, metGoal?"good":"bad");
+  if(rank===1){ const t=`${flagOf(G.country)}${G.country} ${DIV_NAMES[finishDiv]||'联赛'} 冠军`; addHonor(t); pushNews(`🏆 ${t}！`,"good"); }
 
   // 赛季末：你的球员靠每场比赛动态成长（matchGrowth），此处只老化 + 训练加成 + 兜底衰退；世界球员（无逐场模拟）整体结算
   allPlayers().forEach(p=>{
@@ -1063,6 +1065,16 @@ function toggleStarter(id){
 function networth(){ return round1(G.cash + G.squad.reduce((a,p)=>a+p.value,0)); }
 function myRank(){ const s=divClubs(myDiv()).sort(cmpTable); return s.findIndex(t=>t.you)+1; }
 function pushNews(html,type="match"){ G.news.unshift({w:`S${G.season}·R${Math.min(G.round,G.totalRounds)}`,html,type}); if(G.news.length>70) G.news.pop(); }
+function addHonor(title, who){ if(!Array.isArray(G.honors)) G.honors=[]; G.honors.unshift({season:G.season, club:who||G.club, title}); }
+function viewHonors(){
+  const h=G.honors||[];
+  const counts={}; h.forEach(e=>counts[e.title]=(counts[e.title]||0)+1);
+  const summary=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).map(t=>`<div class="l"><span>${t}</span><b style="color:var(--gold)">${counts[t]} 次</b></div>`).join("")||'<div class="hint">还没有冠军——带队夺冠后会记录在此。</div>';
+  const list=[...h].sort((a,b)=>b.season-a.season).map(e=>`<div class="l"><span>S${e.season} · ${e.club}</span><b style="color:var(--gold)">🏆 ${e.title}</b></div>`).join("")||'<div class="hint">暂无夺冠记录</div>';
+  return `<div class="panel"><h2>🏅 经理生涯荣誉 <span class="hint">（共 ${h.length} 座冠军）</span></h2>
+    <div class="negbox">${summary}</div></div>
+  <div class="panel"><h2>📜 夺冠记录（赛季 · 球队 · 奖项）</h2><div class="negbox">${list}</div></div>`;
+}
 
 // =========================================================================
 //  渲染
@@ -1550,7 +1562,7 @@ function render(){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===G.tab));
   const v=$("#view");
   v.innerHTML = G.tab==="squad"?viewSquad() : G.tab==="market"?viewMarket() : G.tab==="rivals"?viewRivals() : G.tab==="scout"?viewScout()
-    : G.tab==="train"?viewTraining() : G.tab==="academy"?viewAcademy() : G.tab==="biz"?viewBusiness() : G.tab==="national"?viewNational2() : G.tab==="conti"?viewConti() : G.tab==="cal"?viewCalendar() : G.tab==="league"?viewLeague2() : G.tab==="news"?viewNews() : viewMenu();
+    : G.tab==="train"?viewTraining() : G.tab==="academy"?viewAcademy() : G.tab==="biz"?viewBusiness() : G.tab==="national"?viewNational2() : G.tab==="conti"?viewConti() : G.tab==="cal"?viewCalendar() : G.tab==="honors"?viewHonors() : G.tab==="league"?viewLeague2() : G.tab==="news"?viewNews() : viewMenu();
 }
 function switchTab(t){ G.tab=t; save(); render(); }
 
@@ -1732,7 +1744,7 @@ function finishStage(c, success, champion){
     if(success){ rep=4; cash=6; msg=`${st.name} 晋级 ✅`; c.nextStage=st.next; }
     else { rep=1; cash=2; msg=`${st.name} 出局`; c.nextStage=st.nextFail; }
   } else {
-    if(champion){ const w=c.stage==="wc"; rep=w?20:12; cash=w?40:25; G.national.titles=(G.national.titles||0)+1; msg=`${st.name} 夺冠 🏆`; allPlayers().filter(p=>p.nat===my).forEach(p=>p.formIdx=clamp(p.formIdx+1,0,4)); }
+    if(champion){ const w=c.stage==="wc"; rep=w?20:12; cash=w?40:25; G.national.titles=(G.national.titles||0)+1; msg=`${st.name} 夺冠 🏆`; addHonor(w?"世界杯 冠军":"洲际杯 冠军", (NATIONS[my]?NATIONS[my].flag:"")+my); allPlayers().filter(p=>p.nat===my).forEach(p=>p.formIdx=clamp(p.formIdx+1,0,4)); }
     else { const round=(c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"; const fin=round==="决赛"; rep=fin?7:4; cash=fin?14:8; msg=`${st.name} 止步${round}`; }
     c.nextStage=st.next;
   }
@@ -1812,7 +1824,7 @@ function playContiMatch(){
 }
 function finishConti(c, champion){
   const tier=contiTiers()[c.tierIdx]; let rep=0,cash=0,msg="";
-  if(champion){ rep=tier.base>=80?18:tier.base>=72?13:9; cash=tier.base>=80?40:tier.base>=72?26:16; G.conti.titles=(G.conti.titles||0)+1; G.conti.wonTier=c.tierIdx; msg=`${tier.name} 夺冠 🏆`; }
+  if(champion){ rep=tier.base>=80?18:tier.base>=72?13:9; cash=tier.base>=80?40:tier.base>=72?26:16; G.conti.titles=(G.conti.titles||0)+1; G.conti.wonTier=c.tierIdx; msg=`${tier.name} 夺冠 🏆`; addHonor(`${tier.name} 冠军`); }
   else if(c.stage==='ko'){ const round=(c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"; const fin=round==="决赛"; rep=fin?9:5; cash=fin?16:8; msg=`${tier.name} 止步${round}`; }
   else { rep=3; cash=6; msg=`${tier.name} 联赛阶段出局`; }
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
@@ -1846,7 +1858,7 @@ function playWCCMatch(){
 function finishWCC(champ){
   const rep=champ?22:10, cash=champ?45:18;
   const msg=champ?"世界俱乐部杯 夺冠 🌎🏆":`世俱杯 止步${(G.wcc.comp.fixtures[G.wcc.comp.idx]&&G.wcc.comp.fixtures[G.wcc.comp.idx].round)||"决赛"}`;
-  if(champ) G.wcc.titles=(G.wcc.titles||0)+1;
+  if(champ){ G.wcc.titles=(G.wcc.titles||0)+1; addHonor("世界俱乐部杯 冠军"); }
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
   G.wcc.comp.outcome=`${msg}（声望 +${rep}，奖金 +${eur(cash)}）`;
   pushNews(`🌎 ${G.wcc.comp.outcome}`,"good");
@@ -1913,6 +1925,7 @@ function playCupMatch(){
   save(); render();
 }
 function finishCup(champ){
+  if(champ) addHonor("国内杯 冠军");
   const rep=champ?10:5, cash=champ?18:6;
   const msg=champ?"国内杯 夺冠 🏆":`国内杯 止步${(G.cup.fixtures[G.cup.idx]&&G.cup.fixtures[G.cup.idx].round)||"决赛"}`;
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
@@ -2152,6 +2165,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!G.conti) G.conti={tier:null, comp:null, titles:0};
   if(G.cup===undefined) G.cup=null;
   if(!G.wcc) G.wcc={in:false, comp:null, titles:0};
+  if(!Array.isArray(G.honors)) G.honors=[];
   if(G.midweekDone===undefined) G.midweekDone=false;
   if(!FORMATIONS[G.formation]) G.formation="4-3-3";
   if(!G.country) G.country=((G.table.find(t=>t.you)||{}).country)||"英格兰";
