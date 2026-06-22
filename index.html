@@ -2283,6 +2283,22 @@ function showFinalModal(rank){
 // ---------- 存档 ----------
 function save(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(G)); }catch(e){} }
 function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.parse(s); if(!G||!G.squad) return false;
+  // 恢复 ID 计数器：否则重载后新生成的球员会与已存球员撞 id，导致谈判等按 id 取到错误球员
+  let _mx=0; const _bump=arr=>{ if(Array.isArray(arr)) arr.forEach(o=>{ if(o&&typeof o.id==="number"&&o.id>_mx)_mx=o.id; }); };
+  _bump(G.squad); _bump(G.market); _bump(G.staffMarket);
+  if(Array.isArray(G.table)) G.table.forEach(c=>{ if(c&&c.squad) _bump(c.squad); });
+  if(G.academy) _bump(G.academy.prospects);
+  if(Array.isArray(G.loans)) G.loans.forEach(o=>{ if(o&&o.p&&typeof o.p.id==="number"&&o.p.id>_mx)_mx=o.p.id; });
+  _id=Math.max(_id,_mx+1);
+  // 修复历史存档已存在的重复 id：阵容/对手/青训/租借保留原 id（被 lineup/clubOf 引用），市场与教练候选若撞 id 则重新分配
+  const _seen=new Set(); const _add=p=>{ if(p&&typeof p.id==="number") _seen.add(p.id); };
+  if(Array.isArray(G.squad)) G.squad.forEach(_add);
+  if(Array.isArray(G.table)) G.table.forEach(c=>{ if(c&&c.squad) c.squad.forEach(_add); });
+  if(G.academy&&Array.isArray(G.academy.prospects)) G.academy.prospects.forEach(_add);
+  if(Array.isArray(G.loans)) G.loans.forEach(o=>_add(o&&o.p));
+  const _dedup=p=>{ if(!p||typeof p.id!=="number") return; if(_seen.has(p.id)) p.id=_id++; _seen.add(p.id); };
+  if(Array.isArray(G.market)) G.market.forEach(_dedup);
+  if(Array.isArray(G.staffMarket)) G.staffMarket.forEach(_dedup);
   if(!Array.isArray(G.training)) G.training=[];
   if(!Array.isArray(G.offers)) G.offers=[];
   if(!G.coachLevel) G.coachLevel=1;
