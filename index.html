@@ -451,6 +451,7 @@ function newGame(world, clubIdx, budget){
     leagueViewDiv:myD, leagueViewCountry:myCountry, leagueViewConf:myConf, rivalViewCountry:myCountry, rivalViewConf:myConf,
     scoutCapacity:2, scoutFee:0.15, scoutQueue:[],
     coachLevel:1, trainSlots:3, training:[],
+    staff:{head:null,att:null,mid:null,def:null,gk:null,med:null}, staffMarket:[],
     formation:"4-3-3", tactic:"平衡", lineup:[], _sel:null,
     offers:[], academy:{level:1, prospects:[], targetNat:null},
     rep:50, sponsors:[], sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
@@ -464,7 +465,7 @@ function newGame(world, clubIdx, budget){
   if(G.conti.tier!=null) startConti();             // 有资格则自动加入洲际杯
   rivalClubs().forEach(c=>{ if(c.squad) c.str=round1(clubStr(c)); });
   autoLineup();
-  generateIntake(); genSponsorOffers(); genNTInvites();
+  generateIntake(); genSponsorOffers(); genNTInvites(); refreshStaffMarket();
   pushNews(`欢迎来到 ${flagOf(myCountry)}${myCountry} · <b>${you.name}</b>（${DIV_NAMES[myD]||'联赛'}）！启动资金 ${eur(round1(budget))}，目标联赛前 ${goalRank} 名。`,"good");
   save();
 }
@@ -534,9 +535,10 @@ function teamRatings(){
   });
   const mean=arr=>arr.length? arr.reduce((s,e)=>s+e.val,0)/arr.length:0;
   const avg=role=>mean(eff.filter(e=>e.role===role));
-  const att=avg("FW")*0.6+avg("MF")*0.4;
-  const def=avg("DF")*0.65+avg("GK")*0.35;
-  const ovr=eff.length? eff.reduce((s,e)=>s+e.val,0)/eff.length : 0;
+  const hc=1+staffLevel("head")*0.004;                 // 主教练小幅提升整体临场（满级 +2%）
+  const att=(avg("FW")*0.6+avg("MF")*0.4)*hc;
+  const def=(avg("DF")*0.65+avg("GK")*0.35)*hc;
+  const ovr=(eff.length? eff.reduce((s,e)=>s+e.val,0)/eff.length : 0)*hc;
   const wideEff=mean(eff.filter(e=>(e.role==="FW"||e.role==="MF")&&(e.x<30||e.x>70)));
   const centralEff=mean(eff.filter(e=>e.role==="MF"&&e.x>=35&&e.x<=65));
   const fwEff=mean(eff.filter(e=>e.role==="FW"));
@@ -585,6 +587,57 @@ function clickSlot(i){
   else if(G.lineup[i]!=null){ removeFromLineup(G.lineup[i]); save(); render(); }
 }
 function wageBill(){ return round2(G.squad.reduce((a,p)=>a+(p.wage||0),0)); }
+
+// ======================= 教练组 / 队医 =======================
+const STAFF_ROLES = [
+  {key:"head", name:"主教练",   icon:"🎩", desc:"提升全队成长、抑制老将衰退，并小幅提升整体临场"},
+  {key:"att",  name:"前锋教练", icon:"⚽", desc:"加快前锋线（ST/LW/RW）球员成长"},
+  {key:"mid",  name:"中场教练", icon:"🎯", desc:"加快中场（DM/CM/AM/LM/RM）球员成长"},
+  {key:"def",  name:"后卫教练", icon:"🛡", desc:"加快后卫（CB/LB/RB）球员成长"},
+  {key:"gk",   name:"门将教练", icon:"🧤", desc:"加快门将成长"},
+  {key:"med",  name:"队医",     icon:"➕", desc:"降低全队受伤概率、加快伤病康复"},
+];
+const STAFF_KEYS = STAFF_ROLES.map(r=>r.key);
+function staffRole(key){ return STAFF_ROLES.find(r=>r.key===key); }
+function staffLevel(key){ return (G.staff && G.staff[key]) ? G.staff[key].level : 0; }
+function lineCoachKey(line){ return line==="GK"?"gk":line==="DF"?"def":line==="MF"?"mid":"att"; }
+function staffWageBill(){ if(!G.staff) return 0; return round2(STAFF_KEYS.reduce((s,k)=>s+(G.staff[k]?(G.staff[k].wage||0):0),0)); }
+function stars(n){ return "★".repeat(n)+"☆".repeat(5-n); }
+function staffUpCost(level){ return round1(level*level*2); }   // Lv1→2:2 … Lv4→5:32
+function makeStaffCand(role){
+  const level=weightedPick([[1,5],[2,8],[3,6],[4,3],[5,1]]);
+  const nat=weightedPick(NAT_KEYS.map(k=>[k,NATIONS[k].w]));
+  const rc=pick(rivalClubs()); const fromClub=(rc && Math.random()<0.4)? rc.name : null;
+  const baseFee=level*2;
+  return {id:_id++, role, name:nameFor(nat), nat, level, fee:round1(fromClub? baseFee*2 : baseFee), wage:round1(level*0.25), fromClub};
+}
+function refreshStaffMarket(){
+  G.staffMarket=[];
+  for(let i=0;i<9;i++) G.staffMarket.push(makeStaffCand(pick(STAFF_KEYS)));
+  STAFF_KEYS.forEach(k=>{ if(!G.staffMarket.some(c=>c.role===k)) G.staffMarket.push(makeStaffCand(k)); });
+}
+function hireStaff(id){
+  if(!G.staff) G.staff={};
+  const i=(G.staffMarket||[]).findIndex(c=>c.id===id); if(i<0) return;
+  const c=G.staffMarket[i];
+  if(G.cash<c.fee){ toast("现金不足，无法聘请"); return; }
+  G.cash=round1(G.cash-c.fee);
+  G.staff[c.role]={name:c.name, nat:c.nat, level:c.level, wage:c.wage};
+  G.staffMarket.splice(i,1);
+  pushNews(`👔 聘请${staffRole(c.role).name}：${NATIONS[c.nat].flag} <b>${c.name}</b>（${stars(c.level)}）${c.fromClub?`，自 ${c.fromClub} 挖角`:""}，签约费 ${eur(c.fee)}。`,"good");
+  save(); render();
+}
+function fireStaff(role){ if(!G.staff||!G.staff[role]) return; pushNews(`👋 解雇${staffRole(role).name} ${G.staff[role].name}。`,"bad"); G.staff[role]=null; save(); render(); }
+function upgradeStaff(role){
+  const s=G.staff&&G.staff[role]; if(!s){ toast("该职位空缺"); return; }
+  if(s.level>=5){ toast("已达最高资质（★★★★★）"); return; }
+  const cost=staffUpCost(s.level);
+  if(G.cash<cost){ toast("现金不足升级资质"); return; }
+  G.cash=round1(G.cash-cost); s.level++; s.wage=round1(s.wage+0.2);
+  pushNews(`📈 ${staffRole(role).name} ${s.name} 资质提升至 ${stars(s.level)}。`,"good");
+  save(); render();
+}
+function rerollStaffMarket(){ const cost=2; if(G.cash<cost){ toast("现金不足搜寻"); return; } G.cash=round1(G.cash-cost); refreshStaffMarket(); toast("已重金搜寻教练市场"); save(); render(); }
 
 // ---------- 俱乐部 / 球员检索 ----------
 function rivalClubs(){ return G.table.filter(t=>!t.you); }
@@ -673,8 +726,8 @@ function nextRound(){
   // 国家队邀约随时间滚动刷新（未任职时每 3 轮变化一次）
   if(G.national && !G.national.nation && G.round%3===0){ genNTInvites(); pushNews(`📣 国家队邀约更新（见「🌐 国家队」）。`,"match"); }
 
-  // 工资支出
-  const wb=round2(wageBill()+loanWageBill()); const inc=sponsorIncome(); G.lastWageBill=wb; G.cash=round1(G.cash-wb+inc);
+  // 工资支出（球员 + 在租 + 教练组）
+  const wb=round2(wageBill()+loanWageBill()+staffWageBill()); const inc=sponsorIncome(); G.lastWageBill=wb; G.cash=round1(G.cash-wb+inc);
 
   const resTxt=res==="W"?"赢球":res==="L"?"输球":"战平";
   pushNews(`<b>${G.club} ${mg}-${og} ${opp.name}</b> · ${resTxt}，奖金 +${eur(prize)}；工资支出 -${eur(wb)}`,"match");
@@ -697,10 +750,13 @@ function applyResult(i,j,gi,gj){
 // 市场演化
 function evolveMarket(){
   const all=allPlayers();
+  const med=staffLevel("med");
   all.forEach(p=>{
     if(p.injured>0) p.injured--;
+    if(p.owned && med && p.injured>0 && Math.random()<0.12*med) p.injured--;  // 队医加快康复
     if(Math.random()<0.45) p.formIdx=clamp(p.formIdx+(Math.random()<0.5?-1:1),0,4);
-    if(p.injured===0 && Math.random()<0.04){ p.injured=rint(1,3); p.formIdx=clamp(p.formIdx-1,0,4); }
+    const injChance = p.owned ? 0.04*(1-0.13*med) : 0.04;                      // 队医降低受伤概率
+    if(p.injured===0 && Math.random()<injChance){ p.injured=rint(1,3); p.formIdx=clamp(p.formIdx-1,0,4); }
     const fair=fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult*(p.injured?0.78:1);
     p.value=round1(clamp((p.value*0.55+fair*0.45)*rnd(0.96,1.05),0.15,9999));
   });
@@ -860,6 +916,7 @@ function endSeason(){
   // 赞助续期 / 刷新赞助与挖角邀请
   if(G.sponsors){ G.sponsors.forEach(s=>s.seasonsLeft--); G.sponsors=G.sponsors.filter(s=>s.seasonsLeft>0); }
   genSponsorOffers();
+  refreshStaffMarket();   // 新赛季教练市场刷新
   genJobOffers(rank);
   // 转会窗口：一批自由球员进入市场（无转会费）
   const faN=rint(4,7);
@@ -1206,8 +1263,8 @@ function renderOffers(){
 function viewSquad(){
   const r=teamRatings();
   const order={GK:0,DF:1,MF:2,FW:3};
-  const sorted=[...G.squad].sort((a,b)=>(b.starter-a.starter)||order[a.pos]-order[b.pos]||b.ovr-a.ovr);
-  const wb=wageBill();
+  const sorted=[...G.squad].sort((a,b)=>(b.starter-a.starter)||order[POS_LINE[a.pos]]-order[POS_LINE[b.pos]]||b.ovr-a.ovr);
+  const wb=round2(wageBill()+loanWageBill()+staffWageBill());
   return renderOffers()+renderLoans()+renderPitch()+`
   <div class="panel">
     <h2>🧤 球队总览</h2>
@@ -1299,7 +1356,7 @@ function viewRivals(){
   const club=ensureSquad(rivals[sel]);
   const chips=rivals.map((c,i)=>`<span class="chip ${i===sel?'active':''}" onclick="G.selRival=${i};render()">${c.name}</span>`).join("");
   const order={GK:0,DF:1,MF:2,FW:3};
-  const list=[...club.squad].sort((a,b)=>order[a.pos]-order[b.pos]||b.ovr-a.ovr);
+  const list=[...club.squad].sort((a,b)=>order[POS_LINE[a.pos]]-order[POS_LINE[b.pos]]||b.ovr-a.ovr);
   return `
   <div class="panel">
     <h2>🆚 球队阵容 <span class="hint">选大洲→国家→球队，可直接谈判挖人</span></h2>
@@ -1353,18 +1410,58 @@ function viewTraining(){
   <div class="panel">
     <h2>🎓 训练中心</h2>
     <div class="squadsum">
-      <div class="ring"><span class="num">Lv.${G.coachLevel}</span><span class="lbl">教练等级</span></div>
-      <div class="ring"><span class="num ${used>=G.trainSlots?'warn':''}">${used}/${G.trainSlots}</span><span class="lbl">训练名额</span></div>
+      <div class="ring"><span class="num">Lv.${G.coachLevel}</span><span class="lbl">训练设施</span></div>
+      <div class="ring"><span class="num ${used>=G.trainSlots?'warn':''}">${used}/${G.trainSlots}</span><span class="lbl">特训名额</span></div>
       <div class="spacer"></div>
-      ${cost!=null?`<button class="btn ghost" onclick="upgradeCoach()">⬆ 升级教练 Lv.${G.coachLevel+1}（${eur(cost)}，名额+1·效果↑）</button>`:`<span class="hint">教练已满级 ✅</span>`}
+      ${cost!=null?`<button class="btn ghost" onclick="upgradeCoach()">⬆ 升级设施 Lv.${G.coachLevel+1}（${eur(cost)}，名额+1·效果↑）</button>`:`<span class="hint">设施已满级 ✅</span>`}
     </div>
-    <div class="hint">把球员放进训练名额：<b>年轻球员（≤23岁）成长更快</b>，<b>老将（≥30岁）衰退更慢</b>。赛季末结算成长，幅度取决于<b>出场时间</b> × <b>球队战绩</b> × <b>训练</b>——多打比赛、排名越高、教练越强，长得越快。</div>
+    <div class="hint">把球员放进特训名额：<b>年轻球员（≤23岁）成长更快</b>，<b>老将（≥30岁）衰退更慢</b>。赛季末结算成长，幅度取决于<b>出场时间</b> × <b>球队战绩</b> × <b>特训</b> × <b>专项教练</b>。专项/主教练对全队生效（无需占用特训名额）。</div>
   </div>
+  ${viewStaff()}
   <div class="panel">
     <h2>球员训练安排 <span class="hint">（${used}/${G.trainSlots} 名额）</span></h2>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
       ${owned.map(p=>trainCard(p)).join("")}
     </div>
+  </div>`;
+}
+function staffCard(role){
+  const r=staffRole(role), s=G.staff?G.staff[role]:null;
+  if(!s) return `<div class="pcard">
+    <div class="prow"><span class="pos" style="background:#2a3550;color:#fff">${r.icon}</span><span class="pname">${r.name}</span><span class="ovr" style="color:var(--down)">空缺</span></div>
+    <div class="meta"><span class="hint">${r.desc}</span></div>
+    <div class="actions"><span class="hint">↓ 在下方教练市场聘请</span></div></div>`;
+  const upCost=s.level<5?staffUpCost(s.level):null;
+  return `<div class="pcard starter">
+    <div class="prow"><span class="pos" style="background:#2a3550;color:#fff">${r.icon}</span><span class="pname">${NATIONS[s.nat].flag} ${s.name}</span><span class="ovr" style="color:var(--gold)">${s.level}★</span></div>
+    <div class="meta"><b>${r.name}</b> <span style="color:var(--gold)">${stars(s.level)}</span> <span class="hint">薪资 ${eur(s.wage)}/轮</span></div>
+    <div class="meta"><span class="hint">${r.desc}</span></div>
+    <div class="actions">
+      ${upCost!=null?`<button class="btn sm" onclick="upgradeStaff('${role}')">⬆ 升级资质（${eur(upCost)}）</button>`:`<span class="ctr-tag" style="background:#3a3320;color:var(--gold)">资质满级</span>`}
+      <button class="btn sm ghost" onclick="fireStaff('${role}')">解雇</button>
+    </div></div>`;
+}
+function staffCandCard(c){
+  const r=staffRole(c.role), occupied=G.staff&&G.staff[c.role];
+  return `<div class="pcard">
+    <div class="prow"><span class="pos" style="background:#2a3550;color:#fff">${r.icon}</span><span class="pname">${NATIONS[c.nat].flag} ${c.name}</span><span class="ovr" style="color:var(--gold)">${c.level}★</span></div>
+    <div class="meta"><b>${r.name}</b> <span style="color:var(--gold)">${stars(c.level)}</span></div>
+    <div class="meta">${c.fromClub?`<span class="ctr-tag" style="background:#3a2a2a;color:#ffb0b0">挖角自 ${c.fromClub}</span>`:`<span class="ctr-tag" style="background:#13324a;color:#7fd0ff">自由身</span>`} <span class="hint">薪资 ${eur(c.wage)}/轮</span></div>
+    <div class="actions"><button class="btn sm" onclick="hireStaff(${c.id})">聘请（${eur(c.fee)}）${occupied?' · 替换现任':''}</button></div></div>`;
+}
+function viewStaff(){
+  const filled=STAFF_KEYS.filter(k=>G.staff&&G.staff[k]).length;
+  const wage=staffWageBill();
+  const mkt=(G.staffMarket||[]).slice().sort((a,b)=>b.level-a.level);
+  return `
+  <div class="panel">
+    <h2>👔 教练组 / 医疗 <span class="hint">（在任 ${filled}/${STAFF_KEYS.length} · 总薪资 ${eur(wage)}/轮）</span></h2>
+    <div class="hint" style="margin-bottom:8px">聘请专项教练加快对应位置球员成长，主教练提升全队，队医降低伤病。资质（★）越高效果越强，可花钱升级。</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">${STAFF_KEYS.map(k=>staffCard(k)).join("")}</div>
+  </div>
+  <div class="panel">
+    <h2>🧑‍🏫 教练市场 <span class="hint">（${mkt.length} 位候选；每赛季刷新）</span> <button class="btn sm ghost" style="float:right" onclick="rerollStaffMarket()">🔄 重金搜寻（${eur(2)}）</button></h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">${mkt.map(c=>staffCandCard(c)).join("")||'<span class="hint">暂无候选，点「重金搜寻」</span>'}</div>
   </div>`;
 }
 function setLearnPos(id,pos){ const p=G.squad.find(x=>x.id===id); if(!p) return; p.learnPos=pos||null; save(); render(); }
@@ -1576,7 +1673,7 @@ function render(){
   $("#rankVal").textContent=`第 ${myRank()} 名`;
   const cashEl=$("#cashVal"); cashEl.textContent=eur(G.cash); cashEl.className="val "+(G.cash<0?"neg":"gold");
   $("#networthVal").textContent=eur(networth());
-  $("#wageVal").textContent=eur(wageBill());
+  $("#wageVal").textContent=eur(round2(wageBill()+loanWageBill()+staffWageBill()));
   $("#nextBtn").disabled=G.finished;
   const _mid=pendingMid();
   $("#nextBtn").textContent=G.finished?"赛季已结束":((_mid&&!G.midweekDone)?`${_mid.label} ▶`:"下一轮 ▶");
@@ -1959,10 +2056,11 @@ function matchGrowth(players){
   players.forEach(p=>{
     const gap=p.potential-p.ovr;
     const inT=p.owned && G.training && G.training.includes(p.id);
+    const coachB = p.owned ? (staffLevel(lineCoachKey(POS_LINE[p.pos]))*0.012 + staffLevel("head")*0.008) : 0; // 专项+主教练成长加成
     let ch=0, dec=false;
-    if(p.age<=23 && gap>0) ch=clamp(0.04+gap*0.008+(inT?0.04:0)+(p.age<=19?0.03:0),0.03,0.30);
-    else if(p.age<=27 && gap>0) ch=0.03+(inT?0.03:0);
-    else if(p.age>=30){ ch=inT?0.02:0.05; dec=true; }
+    if(p.age<=23 && gap>0) ch=clamp(0.04+gap*0.008+(inT?0.04:0)+(p.age<=19?0.03:0)+coachB,0.03,0.36);
+    else if(p.age<=27 && gap>0) ch=0.03+(inT?0.03:0)+coachB;
+    else if(p.age>=30){ ch=inT?0.02:0.05; dec=true; if(p.owned) ch=clamp(ch - staffLevel("head")*0.006 - staffLevel(lineCoachKey(POS_LINE[p.pos]))*0.004,0.01,0.06); } // 教练抑制衰退
     if(ch>0 && Math.random()<ch){
       p.ovr=clamp(p.ovr+(dec?-1:1),40,99);
       p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
@@ -2163,6 +2261,9 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!Array.isArray(G.offers)) G.offers=[];
   if(!G.coachLevel) G.coachLevel=1;
   if(!G.trainSlots) G.trainSlots=G.coachLevel+2;
+  if(!G.staff||typeof G.staff!=="object") G.staff={head:null,att:null,mid:null,def:null,gk:null,med:null};
+  STAFF_KEYS.forEach(k=>{ if(!(k in G.staff)) G.staff[k]=null; });
+  if(!Array.isArray(G.staffMarket) || !G.staffMarket.length) refreshStaffMarket();
   if(G.goalRank==null) G.goalRank=5;
   if(!G.archetype) G.archetype="mid";
   rivalClubs().forEach(c=>{ if(!c.tactic) c.tactic=pick(TACTIC_KEYS); if(c.squad){ c.squad.forEach(p=>p.free=false); c.str=round1(clubStr(c)); } });
