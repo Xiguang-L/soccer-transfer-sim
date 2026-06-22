@@ -317,7 +317,8 @@ const ARCHETYPES = {
 
 // ===== 联赛金字塔（D 阶段）=====
 const DIV_NAMES=["甲级联赛","乙级联赛"];
-const DIV_SIZE=10, PROMO=3;
+const DIV_SIZE=10, PROMO=3, SQUAD_MAX=52;
+function squadCount(){ return G.squad.length + (Array.isArray(G.loans)?G.loans.length:0); } // 含租出，避免归队超员
 const CLUB_PRE=["北原","南海","东岭","西港","铁山","黑森","红河","青松","金狮","白鲨","狂风","巨岩","雷霆","苍鹰","怒涛","星辰","赤焰","寒霜","碧涛","飞龙","猎豹","海鸥","劲松","远征","雄狮","蓝鲸","赤龙","银翼","钢城","奥林","皇家","流浪者","联合","常胜","王朝","北辰","云岭","海港","烈日","苍穹","信天翁","开拓者","守望","破晓","磐石","旋风","极地","翡翠","琥珀","黑豹"];
 const CLUB_SUF=["FC","联","竞技","城","队","俱乐部","体育会","SC"];
 function genClubName(used){ let n,t=0; do{ n=pick(CLUB_PRE)+pick(CLUB_SUF); t++; }while(used.has(n)&&t<120); used.add(n); return n; }
@@ -840,7 +841,7 @@ function endSeason(){
       else if(p.age>=30) p.ovr=clamp(p.ovr-rint(0,2),42,99);
       p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
       p.owned=true; p.wage=wageDemand(p.ovr); if(!p.contractYears) p.contractYears=1;
-      if(G.squad.length<25) G.squad.push(p);
+      G.squad.push(p);
     });
     pushNews(`🤝 ${G.loans.length} 名租借球员赛季末归队（获得了成长）。`,"good"); G.loans=[];
   }
@@ -900,7 +901,7 @@ function openNegotiation(id){
   const fromRival=clubOf(id);
   const p = fromRival ? fromRival.squad.find(x=>x.id===id) : G.market.find(x=>x.id===id);
   if(!p) return;
-  if(G.squad.length>=25){ toast("阵容已满（上限 25 人），先卖人"); return; }
+  if(squadCount()>=SQUAD_MAX){ toast(`阵容已满（含租出，上限 ${SQUAD_MAX} 人），先卖人`); return; }
   if(fromRival && fromRival.squad.length<=12){ toast(`${fromRival.name} 阵容人数不足，不愿放人`); return; }
   const key = fromRival? isKeyPlayer(fromRival,p) : false;
   const free = !fromRival && !!p.free;
@@ -1209,7 +1210,7 @@ function viewSquad(){
     <div class="hint">恰好 11 人首发（含 1 门将）方可比赛。年轻球员多出场→成长更快。每轮自动扣工资，注意现金流。</div>
   </div>
   <div class="panel">
-    <h2>球员名单 <span class="hint">（${G.squad.length}/25 人）</span></h2>
+    <h2>球员名单 <span class="hint">（${G.squad.length}/${SQUAD_MAX} 人${(G.loans&&G.loans.length)?` · 另租出 ${G.loans.length} 人`:""}）</span></h2>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
       ${sorted.map(p=>playerCard(p,"squad")).join("")}
     </div>
@@ -1413,7 +1414,7 @@ function upgradeAcademy(){
 }
 function promoteProspect(id){
   const i=G.academy.prospects.findIndex(p=>p.id===id); if(i<0) return;
-  if(G.squad.length>=25){ toast("一队阵容已满（25人）"); return; }
+  if(squadCount()>=SQUAD_MAX){ toast(`一队阵容已满（含租出，上限 ${SQUAD_MAX}）`); return; }
   const p=G.academy.prospects[i];
   p.owned=true; p.buyPrice=0; p.wage=wageDemand(p.ovr); p.contractYears=3; p.starter=false; p.homegrown=true;
   G.squad.push(p); G.academy.prospects.splice(i,1);
@@ -1586,7 +1587,7 @@ function loanOut(id){
 }
 function recallLoan(id){
   const i=G.loans.findIndex(o=>o.p.id===id); if(i<0) return;
-  if(G.squad.length>=25){ toast("阵容已满，无法召回"); return; }
+  if(G.squad.length>=SQUAD_MAX){ toast("阵容已满，无法召回"); return; }
   const p=G.loans[i].p; p.owned=true; p.wage=wageDemand(p.ovr); if(!p.contractYears)p.contractYears=1;
   G.squad.push(p); G.loans.splice(i,1);
   toast(`${p.name} 提前召回`); save(); render();
