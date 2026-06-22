@@ -449,6 +449,7 @@ function newGame(world, clubIdx, budget){
   buildSchedules();
   divClubs(myD).forEach(ensureSquad);              // 同区对手生成完整阵容
   startCup();
+  if(G.conti.tier!=null) startConti();             // 有资格则自动加入洲际杯
   rivalClubs().forEach(c=>{ if(c.squad) c.str=round1(clubStr(c)); });
   autoLineup();
   generateIntake(); genSponsorOffers(); genNTInvites();
@@ -857,12 +858,14 @@ function endSeason(){
   if(G.national && !G.national.nation) genNTInvites();
   rivalClubs().forEach(c=>{ if(c.squad) c.str=round1(clubStr(c)); });
   applyPromotionRelegation();
-  if(G.conti){ G.conti.tier=qualifyTier(rank, finishDiv); G.conti.comp=null; }
+  if(G.conti){ let nt=qualifyTier(rank, finishDiv); if(G.conti.wonTier!=null) nt=0; /* 卫冕：洲际冠军下赛季继续顶级洲际赛事 */ G.conti.tier=nt; G.conti.wonTier=null; G.conti.comp=null; }
   G.season++; G.round=1;
   G.table.forEach(t=>{t.P=t.W=t.D=t.L=t.GF=t.GA=t.pts=0;});
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
   startCup(); G.midweekDone=false;
+  if(G.conti && G.conti.tier!=null) startConti();                       // 洲际杯自动加入当季赛程
+  if(G.national && G.national.nation){ G.national.comp=null; startStage(G.national.nextStage||"contQual"); } // 国家队赛事自动开始
   G.leagueViewDiv=myDiv();
   showSeasonModal(rank,bonus);
 }
@@ -1670,10 +1673,10 @@ function genNTInvites(){
   if(elig.length<3) elig=NAT_KEYS.slice();
   G.national.invites=elig.sort(()=>Math.random()-0.5).slice(0,3);
 }
-function acceptNTInvite(nat){ G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; toast(`你已出任 ${nat} 国家队主帅`); pushNews(`🌐 你接受邀请，出任 <b>${NATIONS[nat].flag}${nat}</b> 国家队主帅！`,"good"); save(); render(); }
+function acceptNTInvite(nat){ G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; toast(`你已出任 ${nat} 国家队主帅`); pushNews(`🌐 你接受邀请，出任 <b>${NATIONS[nat].flag}${nat}</b> 国家队主帅！`,"good"); startStage("contQual"); }
 const NT_HIGH_REP=80;
 function freePickAvailable(){ return (G.rep||50)>=NT_HIGH_REP && (G.national.lastFreePick==null || (G.season-G.national.lastFreePick)>=4); }
-function freePickNT(nat){ if(!NATIONS[nat]) return; G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; G.national.lastFreePick=G.season; toast(`高声望特权：执教 ${nat} 国家队`); pushNews(`🎖️ 高声望特权：你自由选择执教 <b>${NATIONS[nat].flag}${nat}</b> 国家队！`,"good"); save(); render(); }
+function freePickNT(nat){ if(!NATIONS[nat]) return; G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; G.national.lastFreePick=G.season; toast(`高声望特权：执教 ${nat} 国家队`); pushNews(`🎖️ 高声望特权：你自由选择执教 <b>${NATIONS[nat].flag}${nat}</b> 国家队！`,"good"); startStage("contQual"); }
 function resignNT(){ const n=G.national.nation; G.national.nation=null; G.national.comp=null; genNTInvites(); toast("已卸任国家队"); if(n) pushNews(`你卸任了 ${n} 国家队主帅。`,"match"); save(); render(); }
 function setNtTactic(t){ if(!TACTICS[t])return; G.national.tactic=t; save(); render(); }
 function ntTacticBonus(myStr,oppStr){ const t=G.national.tactic||"平衡"; let att=0,def=0;
@@ -1733,6 +1736,8 @@ function finishStage(c, success, champion){
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
   c.outcome=`${msg}（声望 +${rep}，奖金 +${eur(cash)}）`;
   pushNews(`🌐 ${NATIONS[my].flag}${my}：${c.outcome}`,"good");
+  G.national.nextStage=c.nextStage;
+  if(G.national.nation) startStage(c.nextStage);   // 自动进入下一阶段（持续运转）
 }
 // ======================= 洲际俱乐部杯赛（D-2） =======================
 const CONTI={
@@ -1804,7 +1809,7 @@ function playContiMatch(){
 }
 function finishConti(c, champion){
   const tier=contiTiers()[c.tierIdx]; let rep=0,cash=0,msg="";
-  if(champion){ rep=tier.base>=80?18:tier.base>=72?13:9; cash=tier.base>=80?40:tier.base>=72?26:16; G.conti.titles=(G.conti.titles||0)+1; msg=`${tier.name} 夺冠 🏆`; }
+  if(champion){ rep=tier.base>=80?18:tier.base>=72?13:9; cash=tier.base>=80?40:tier.base>=72?26:16; G.conti.titles=(G.conti.titles||0)+1; G.conti.wonTier=c.tierIdx; msg=`${tier.name} 夺冠 🏆`; }
   else if(c.stage==='ko'){ const round=(c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"; const fin=round==="决赛"; rep=fin?9:5; cash=fin?16:8; msg=`${tier.name} 止步${round}`; }
   else { rep=3; cash=6; msg=`${tier.name} 联赛阶段出局`; }
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
@@ -1818,7 +1823,7 @@ function viewConti(){
   if(ti==null && !c){
     body=`<div class="hint">本赛季<b>无洲际资格</b>。在甲级联赛取得好成绩可获下赛季资格：前4名→第1级，5-6名→第2级，第7名→第3级。</div>`;
   } else if(!c){
-    body=`<div class="hint" style="margin-bottom:6px">本赛季资格：<b>${tiers[ti].name}</b>（${tiers[ti].field} 队参赛）。</div><button class="btn big" onclick="startConti()">开始 ${tiers[ti].name}</button>`;
+    body=`<div class="hint">本赛季资格：<b>${tiers[ti].name}</b>（${tiers[ti].field} 队参赛）。赛事会在赛季中通过顶部「下一场」自动穿插进行。</div>`;
   } else {
     const tier=tiers[c.tierIdx];
     const rows=c.fixtures.map((f,i)=>{ const cur=(i===c.idx && !c.done && !f.played); const res=f.played?`<b>${f.mg}-${f.og}</b> ${f.win?'胜':(f.draw?'平':'负')}`:(cur?'<span style="color:var(--accent)">下一场 ▶</span>':'未赛'); return `<div class="l"><span>${f.round} vs ${f.opp} (${f.oppStr})</span><span>${res}</span></div>`; }).join("");
@@ -1964,7 +1969,7 @@ function viewNational2(){
   let campHTML="";
   if(!c){
     const ns=N.nextStage||"contQual";
-    campHTML=`<div class="hint" style="margin-bottom:6px">当前无进行中的赛事。</div><button class="btn big" onclick="startStage('${ns}')">开始 ${NT_STAGES[ns].name}</button>`;
+    campHTML=`<div class="hint">下一项赛事 <b>${NT_STAGES[ns].name}</b> 将自动开始（赛季初/上一阶段结束后），通过顶部「下一场」按钮进行。</div>`;
   } else {
     const rows=c.fixtures.map((f,i)=>{
       const cur=(i===c.idx && !c.done && !f.played);
@@ -1972,7 +1977,7 @@ function viewNational2(){
       return `<div class="l"><span>${f.round} vs ${NATIONS[f.opp].flag}${f.opp} (${Math.round(ntStrength(f.opp))})</span><span>${res}</span></div>`;
     }).join("");
     campHTML=`<div class="negbox">${rows}</div>`;
-    if(c.done) campHTML+=`<div class="hint" style="margin:8px 0">${c.outcome}</div><button class="btn big" onclick="startStage('${c.nextStage}')">进入 ${NT_STAGES[c.nextStage].name}</button>`;
+    if(c.done) campHTML+=`<div class="hint" style="margin:8px 0">${c.outcome} · 下一阶段将自动开始</div>`;
     else campHTML+=`<div class="hint" style="margin-top:8px">下一场将通过顶部「下一场」按钮进行，与联赛自动穿插。</div>`;
   }
   const xi=ntPool(my).sort((a,b)=>b.ovr-a.ovr).slice(0,11);
@@ -2107,6 +2112,8 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.rivalViewConf==null) G.rivalViewConf=G.conf;
   if(G.leagueViewDiv==null) G.leagueViewDiv=myDiv();
   if(!Array.isArray(G.lineup) || !G.lineup.length) autoLineup(); else sanitizeLineup();
+  if(G.national && G.national.nation && !G.national.comp) startStage(G.national.nextStage||"contQual"); // 老存档：国家队赛事自动接上
+  if(G.conti && G.conti.tier!=null && !G.conti.comp) startConti();                                      // 老存档：洲际杯自动接上
   return true; } }catch(e){} return false; }
 function exportSave(){ const d=localStorage.getItem(SAVE_KEY)||JSON.stringify(G); if(navigator.clipboard){ navigator.clipboard.writeText(d).then(()=>toast("存档码已复制到剪贴板"),()=>importPrompt(d)); } else importPrompt(d); }
 function downloadSave(){
