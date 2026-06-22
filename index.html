@@ -104,6 +104,16 @@
   .modal .score{font-size:40px; font-weight:800; margin:10px 0; letter-spacing:2px; text-align:center}
   .modal .res-W{color:var(--up)} .modal .res-L{color:var(--down)} .modal .res-D{color:var(--gold)}
   .modal p{color:var(--dim); margin-bottom:8px; font-size:14px}
+  .celebrate{position:fixed; inset:0; z-index:95; display:flex; align-items:center; justify-content:center; padding:16px; overflow:hidden; background:radial-gradient(circle at 50% 28%, rgba(40,60,40,.55), rgba(2,8,6,.93))}
+  .celebrate .cele-card{position:relative; z-index:2; text-align:center; background:linear-gradient(165deg,#173a24,#0a1f14); border:2px solid var(--gold); border-radius:22px; padding:34px 30px; max-width:440px; width:100%; box-shadow:0 0 70px rgba(212,175,55,.4); animation:celePop .55s cubic-bezier(.2,1.35,.5,1)}
+  .celebrate .cele-trophy{font-size:80px; line-height:1; filter:drop-shadow(0 0 20px rgba(212,175,55,.75)); animation:celeFloat 2.2s ease-in-out infinite}
+  .celebrate .cele-title{font-size:27px; font-weight:800; color:var(--gold); margin:10px 0 4px; letter-spacing:1px; text-shadow:0 0 18px rgba(212,175,55,.5)}
+  .celebrate .cele-sub{color:var(--txt); font-size:16px; font-weight:600; margin-bottom:4px}
+  .celebrate .cele-meta{color:var(--dim); font-size:13px; margin-bottom:18px}
+  @keyframes celePop{from{transform:scale(.65);opacity:0} to{transform:scale(1);opacity:1}}
+  @keyframes celeFloat{0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)}}
+  .confetti{position:absolute; top:-16px; width:9px; height:15px; border-radius:1px; opacity:.92; animation:confFall linear forwards}
+  @keyframes confFall{to{transform:translateY(110vh) rotate(620deg); opacity:.65}}
   .field{margin:12px 0; text-align:left}
   .field label{display:block; font-size:13px; color:var(--dim); margin-bottom:5px}
   .field .row{display:flex; align-items:center; gap:10px}
@@ -851,14 +861,14 @@ function endSeason(){
   const finishDiv=myDiv();
   const sorted=divClubs(finishDiv).sort(cmpTable);
   const rank=sorted.findIndex(t=>t.you)+1;
-  const bonus=round1((rank===1?30:rank===2?18:rank===3?10:rank<=5?4:1)*(myDiv()===0?1.4:0.75));
+  const bonus=round1((rank===1?40:rank===2?21:rank===3?12:rank<=5?5:1.5)*(myDiv()===0?1.55:0.9)); // 冠军奖金更高，按联赛级别加权
   const transferBudget=round1((9-Math.min(rank,8))*rnd(3,6) + G.rep*0.2);
   G.rep=clamp(G.rep + (rank===1?10:rank<=3?6:rank<=G.goalRank?3:-2), 0, 100);
   G.cash=round1(G.cash+bonus+transferBudget);
   pushNews(`💰 下赛季董事会拨款：联赛奖金 ${eur(bonus)} + 转会预算 ${eur(transferBudget)}（当前声望 ${Math.round(G.rep)}）。`,"good");
   const metGoal = rank<=G.goalRank;
   pushNews(`🏁 第 ${G.season} 赛季结束！最终第 ${rank} 名（目标前 ${G.goalRank}）— ${metGoal?"达成预期 ✅":"未达预期 ⚠️"}，赛季奖金 +${eur(bonus)}。`, metGoal?"good":"bad");
-  if(rank===1){ const t=`${flagOf(G.country)}${G.country} ${DIV_NAMES[finishDiv]||'联赛'} 冠军`; addHonor(t); pushNews(`🏆 ${t}！`,"good"); }
+  if(rank===1){ const t=`${flagOf(G.country)}${G.country} ${DIV_NAMES[finishDiv]||'联赛'} 冠军`; addHonor(t); pushNews(`🏆 ${t}！`,"good"); celebrate({trophy:"🏆", title:`${DIV_NAMES[finishDiv]||'联赛'} 冠军`, sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 联赛登顶 · 奖金 +${eur(bonus)}`}); }
 
   // 赛季末：你的球员靠每场比赛动态成长（matchGrowth），此处只老化 + 训练加成 + 兜底衰退；世界球员（无逐场模拟）整体结算
   allPlayers().forEach(p=>{
@@ -1862,7 +1872,7 @@ function finishStage(c, success, champion){
     if(success){ rep=4; cash=6; msg=`${st.name} 晋级 ✅`; c.nextStage=st.next; }
     else { rep=1; cash=2; msg=`${st.name} 出局`; c.nextStage=st.nextFail; }
   } else {
-    if(champion){ const w=c.stage==="wc"; rep=w?20:12; cash=w?40:25; G.national.titles=(G.national.titles||0)+1; msg=`${st.name} 夺冠 🏆`; addHonor(w?"世界杯 冠军":"洲际杯 冠军", (NATIONS[my]?NATIONS[my].flag:"")+my); allPlayers().filter(p=>p.nat===my).forEach(p=>p.formIdx=clamp(p.formIdx+1,0,4)); }
+    if(champion){ const w=c.stage==="wc"; rep=w?20:12; cash=w?62:38; G.national.titles=(G.national.titles||0)+1; msg=`${st.name} 夺冠 🏆`; const ht=w?"世界杯 冠军":"洲际杯 冠军"; addHonor(ht, (NATIONS[my]?NATIONS[my].flag:"")+my); celebrate({trophy:w?"🌐":"🏆", title:ht, sub:`${NATIONS[my]?NATIONS[my].flag:""} ${my}`, meta:`第 ${G.season} 赛季 · 国家队加冕 · 奖金 +${eur(cash)}`}); allPlayers().filter(p=>p.nat===my).forEach(p=>p.formIdx=clamp(p.formIdx+1,0,4)); }
     else { const round=(c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"; const fin=round==="决赛"; rep=fin?7:4; cash=fin?14:8; msg=`${st.name} 止步${round}`; }
     c.nextStage=st.next;
   }
@@ -1942,7 +1952,7 @@ function playContiMatch(){
 }
 function finishConti(c, champion){
   const tier=contiTiers()[c.tierIdx]; let rep=0,cash=0,msg="";
-  if(champion){ rep=tier.base>=80?18:tier.base>=72?13:9; cash=tier.base>=80?40:tier.base>=72?26:16; G.conti.titles=(G.conti.titles||0)+1; G.conti.wonTier=c.tierIdx; msg=`${tier.name} 夺冠 🏆`; addHonor(`${tier.name} 冠军`); }
+  if(champion){ rep=tier.base>=80?22:tier.base>=72?16:11; cash=tier.base>=80?58:tier.base>=72?38:24; G.conti.titles=(G.conti.titles||0)+1; G.conti.wonTier=c.tierIdx; msg=`${tier.name} 夺冠 🏆`; addHonor(`${tier.name} 冠军`); celebrate({trophy:"🌍", title:`${tier.name} 冠军`, sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 洲际之巅 · 奖金 +${eur(cash)}`}); }
   else if(c.stage==='ko'){ const round=(c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"; const fin=round==="决赛"; rep=fin?9:5; cash=fin?16:8; msg=`${tier.name} 止步${round}`; }
   else { rep=3; cash=6; msg=`${tier.name} 联赛阶段出局`; }
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
@@ -1974,9 +1984,9 @@ function playWCCMatch(){
   save(); render();
 }
 function finishWCC(champ){
-  const rep=champ?22:10, cash=champ?45:18;
+  const rep=champ?26:10, cash=champ?72:24;
   const msg=champ?"世界俱乐部杯 夺冠 🌎🏆":`世俱杯 止步${(G.wcc.comp.fixtures[G.wcc.comp.idx]&&G.wcc.comp.fixtures[G.wcc.comp.idx].round)||"决赛"}`;
-  if(champ){ G.wcc.titles=(G.wcc.titles||0)+1; addHonor("世界俱乐部杯 冠军"); }
+  if(champ){ G.wcc.titles=(G.wcc.titles||0)+1; addHonor("世界俱乐部杯 冠军"); celebrate({trophy:"🌎", title:"世界俱乐部杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 世界之巅！· 奖金 +${eur(cash)}`}); }
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
   G.wcc.comp.outcome=`${msg}（声望 +${rep}，奖金 +${eur(cash)}）`;
   pushNews(`🌎 ${G.wcc.comp.outcome}`,"good");
@@ -2043,8 +2053,8 @@ function playCupMatch(){
   save(); render();
 }
 function finishCup(champ){
-  if(champ) addHonor("国内杯 冠军");
-  const rep=champ?10:5, cash=champ?18:6;
+  if(champ){ addHonor("国内杯 冠军"); celebrate({trophy:"🏆", title:"国内杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 杯赛加冕`}); }
+  const rep=champ?10:5, cash=champ?27:9;
   const msg=champ?"国内杯 夺冠 🏆":`国内杯 止步${(G.cup.fixtures[G.cup.idx]&&G.cup.fixtures[G.cup.idx].round)||"决赛"}`;
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
   G.cup.outcome=`${msg}（声望+${rep}，奖金+${eur(cash)}）`;
@@ -2224,6 +2234,22 @@ function viewNational(){
 // ---------- Modal / Toast ----------
 let toastTimer;
 function toast(msg){ const el=$("#toast"); el.innerHTML=msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),2400); }
+function celebrate(o){
+  const old=document.getElementById("celebrate"); if(old) old.remove();
+  const colors=["#d4af37","#5ad1ff","#ff6b6b","#7CFC00","#ff9f43","#b388ff","#ffffff","#ffd86b"];
+  let conf="";
+  for(let i=0;i<42;i++){ const l=Math.round(Math.random()*100); const c=colors[i%colors.length]; const dl=(Math.random()*0.8).toFixed(2); const dur=(1.8+Math.random()*1.8).toFixed(2); const rot=Math.round(Math.random()*360);
+    conf+=`<span class="confetti" style="left:${l}%;background:${c};animation-duration:${dur}s;animation-delay:${dl}s;transform:rotate(${rot}deg)"></span>`; }
+  const el=document.createElement("div"); el.className="celebrate"; el.id="celebrate";
+  el.innerHTML=`${conf}<div class="cele-card">
+    <div class="cele-trophy">${o.trophy||"🏆"}</div>
+    <div class="cele-title">${o.title}</div>
+    <div class="cele-sub">${o.sub||""}</div>
+    <div class="cele-meta">${o.meta||""}</div>
+    <button class="btn big" style="width:100%" onclick="document.getElementById('celebrate').remove()">🎉 继续</button>
+  </div>`;
+  document.body.appendChild(el);
+}
 function showOverlay(html,center){ const m=$("#modal"); m.className="modal"+(center?" center":""); m.innerHTML=html; $("#overlay").classList.add("show"); }
 function closeOverlay(){ $("#overlay").classList.remove("show"); }
 function showMatchModal(opp,mg,og,res,prize,wb,tac){
