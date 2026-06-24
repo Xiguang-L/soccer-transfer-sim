@@ -634,15 +634,38 @@ function tacticMods(r, oppStr){
   else if(t==="高位压迫"){ att=1.06; def=1.06; note="高位压迫 攻防+6%"; }
   return {att, def, note};
 }
+// 匈牙利算法（最小费用完美匹配，行数 n ≤ 列数 m），返回每行分配的列索引
+function hungarianAssign(a){
+  const n=a.length, m=a[0].length, INF=1e15;
+  const u=new Array(n+1).fill(0), v=new Array(m+1).fill(0), p=new Array(m+1).fill(0), way=new Array(m+1).fill(0);
+  for(let i=1;i<=n;i++){
+    p[0]=i; let j0=0;
+    const minv=new Array(m+1).fill(INF), used=new Array(m+1).fill(false);
+    do{
+      used[j0]=true; const i0=p[j0]; let delta=INF, j1=-1;
+      for(let j=1;j<=m;j++) if(!used[j]){
+        const cur=a[i0-1][j-1]-u[i0]-v[j];
+        if(cur<minv[j]){ minv[j]=cur; way[j]=j0; }
+        if(minv[j]<delta){ delta=minv[j]; j1=j; }
+      }
+      for(let j=0;j<=m;j++){ if(used[j]){ u[p[j]]+=delta; v[j]-=delta; } else minv[j]-=delta; }
+      j0=j1;
+    } while(p[j0]!==0);
+    do{ const j1=way[j0]; p[j0]=p[j1]; j0=j1; } while(j0!==0);
+  }
+  const ans=new Array(n).fill(-1);
+  for(let j=1;j<=m;j++) if(p[j]>=1 && p[j]<=n) ans[p[j]-1]=j-1;
+  return ans;
+}
 function autoLineup(){
-  const ss=slots(); G.lineup=new Array(ss.length).fill(null);
-  const avail=G.squad.filter(p=>!p.injured);
-  // 贪心全局最优分配：按 评分×状态×位置熟练度 给每个 (球员,位置) 打分，从高到低占位
-  const pairs=[];
-  ss.forEach((s,i)=>{ avail.forEach(p=>{ pairs.push([p.ovr*FORMS[p.formIdx].mult*posEff(p,s.pos), i, p.id]); }); });
-  pairs.sort((a,b)=>b[0]-a[0]);
-  const usedP=new Set(), usedS=new Set();
-  for(const pr of pairs){ if(usedS.has(pr[1])||usedP.has(pr[2])) continue; G.lineup[pr[1]]=pr[2]; usedS.add(pr[1]); usedP.add(pr[2]); if(usedS.size>=ss.length) break; }
+  const ss=slots(); const avail=G.squad.filter(p=>!p.injured);
+  G.lineup=new Array(ss.length).fill(null);
+  const n=ss.length; if(!avail.length){ syncStarters(); return; }
+  const m=Math.max(n, avail.length);                     // 不足 11 人时用虚拟列补齐
+  const cost=[];
+  for(let i=0;i<n;i++){ const row=new Array(m).fill(0); for(let j=0;j<avail.length;j++){ const p=avail[j]; row[j]=-(p.ovr*FORMS[p.formIdx].mult*posEff(p,ss[i].pos)); } cost.push(row); }
+  const ans=hungarianAssign(cost);                       // 全局最优：最大化 Σ 评分×状态×位置熟练度
+  for(let i=0;i<n;i++){ const j=ans[i]; if(j>=0 && j<avail.length) G.lineup[i]=avail[j].id; }
   syncStarters();
 }
 function setFormation(f){ if(!FORMATIONS[f]) return; G.formation=f; autoLineup(); save(); render(); }
