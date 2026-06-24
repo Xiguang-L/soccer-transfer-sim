@@ -140,6 +140,8 @@
   .live .stam>i{display:block; height:100%}
   .trait{display:inline-block; font-size:12px; line-height:1; padding:1px 2px; border-radius:5px; background:#1c2c3f; margin-right:1px; cursor:default}
   .trait.neg{background:#3a2030}
+  .pname.clk{cursor:pointer} .pname.clk:hover{color:var(--accent); text-decoration:underline}
+  .lnk{cursor:pointer; color:var(--accent); text-decoration:underline dotted}
   .field{margin:12px 0; text-align:left}
   .field label{display:block; font-size:13px; color:var(--dim); margin-bottom:5px}
   .field .row{display:flex; align-items:center; gap:10px}
@@ -255,17 +257,17 @@ function detailedPos(x){ return POS_LINE[x] ? x : pick(LINE_POS[x]||["CM"]); }  
 function posEff(p, sp){ if(p.pos===sp) return 1; if(p.pos2&&p.pos2.includes(sp)) return 0.92; if(POS_LINE[p.pos]===POS_LINE[sp]) return 0.84; return 0.66; } // 本职/兼职/同线/陌生
 // ---------- 球员特质 ----------
 const TRAITS = {
-  poacher:  {name:"单刀王",     icon:"🎯", line:["FW"]},
-  aerial:   {name:"头球高手",   icon:"🦅", line:["FW","DF"]},
-  setpiece: {name:"定位球大师", icon:"🥅", line:["FW","MF"]},
-  playmaker:{name:"节拍器",     icon:"🎼", line:["MF"]},
-  winger:   {name:"边路快马",   icon:"⚡", line:["MF","FW"]},
-  rock:     {name:"铁闸",       icon:"🧱", line:["DF"]},
-  leader:   {name:"更衣室领袖", icon:"👑", line:["GK","DF","MF","FW"]},
-  bigGame:  {name:"大心脏",     icon:"🔥", line:["GK","DF","MF","FW"]},
-  ironman:  {name:"铁人",       icon:"💪", line:["GK","DF","MF","FW"]},
-  prodigy:  {name:"天才",       icon:"🌟", line:["DF","MF","FW"]},
-  fragile:  {name:"玻璃人",     icon:"🧊", line:["GK","DF","MF","FW"], neg:true},
+  poacher:  {name:"单刀王",     icon:"🎯", line:["FW"], desc:"门前嗅觉敏锐，抢点与单刀进球更多"},
+  aerial:   {name:"头球高手",   icon:"🦅", line:["FW","DF"], desc:"制空强，头球破门与长传冲吊加成"},
+  setpiece: {name:"定位球大师", icon:"🥅", line:["FW","MF"], desc:"任意球/点球/角球专家，比赛中会有定位球破门"},
+  playmaker:{name:"节拍器",     icon:"🎼", line:["MF"], desc:"中场组织核心，提升全队进攻"},
+  winger:   {name:"边路快马",   icon:"⚡", line:["MF","FW"], desc:"边路突破犀利，边路传中战术加成"},
+  rock:     {name:"铁闸",       icon:"🧱", line:["DF"], desc:"防守稳固，提升全队防守"},
+  leader:   {name:"更衣室领袖", icon:"👑", line:["GK","DF","MF","FW"], desc:"领袖气质，小幅提升全队整体"},
+  bigGame:  {name:"大心脏",     icon:"🔥", line:["GK","DF","MF","FW"], desc:"大场面先生，关键战发挥更稳"},
+  ironman:  {name:"铁人",       icon:"💪", line:["GK","DF","MF","FW"], desc:"体能充沛，比赛中掉体能更慢"},
+  prodigy:  {name:"天才",       icon:"🌟", line:["DF","MF","FW"], desc:"天赋异禀，成长速度更快"},
+  fragile:  {name:"玻璃人",     icon:"🧊", line:["GK","DF","MF","FW"], neg:true, desc:"身体脆弱，更容易受伤（负面）"},
 };
 const TRAIT_KEYS=Object.keys(TRAITS);
 function genTraits(line, ovr, potential, age){
@@ -1306,7 +1308,7 @@ function playerCard(p,mode){
   return `<div class="pcard ${star} ${injc} ${wonder}">
     <div class="prow">
       <span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span>
-      <span class="pname">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</span>
+      <span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</span>
       <span class="ovr">${p.ovr}</span>
     </div>
     <div class="meta">
@@ -1368,7 +1370,7 @@ function renderOffers(){
       const p=G.squad.find(x=>x.id===o.playerId);
       const prof=p?round1(o.amount-p.buyPrice):0;
       return `<div class="negbox">
-        <div class="l"><span><b>${o.fromClub}</b> 求购 <b>${p?NATIONS[p.nat].flag+" "+p.name:o.playerName}</b>${p?` · ${POS_CN[p.pos]} ${p.ovr} · 身价 ${eur(p.value)}`:""}</span><b style="color:var(--gold)">${eur(o.amount)}</b></div>
+        <div class="l"><span><b>${o.fromClub}</b> 求购 <b class="${p?'lnk':''}" ${p?`onclick="openPlayer(${o.playerId})"`:''}>${p?NATIONS[p.nat].flag+" "+p.name:o.playerName}</b>${p?` · ${POS_CN[p.pos]} ${p.ovr} · 身价 ${eur(p.value)}`:""}</span><b style="color:var(--gold)">${eur(o.amount)}</b></div>
         <div style="display:flex;gap:6px;margin-top:8px">
           <button class="btn sm" onclick="acceptOffer(${o.playerId})">接受（${prof>=0?"盈利+":"亏损"}${eur(Math.abs(prof))}）</button>
           <button class="btn sm ghost" onclick="rejectOffer(${o.playerId})">拒绝</button>
@@ -1422,7 +1424,7 @@ function marketList(){
 function worldPlayerCard(p,club){
   const scoutBtn=p.scouted?"":`<button class="btn sm scout" onclick="sendScout(${p.id})">🔭考察</button>`;
   return `<div class="pcard ${(isWonder(p)&&p.scouted)?'wonder':''} ${p.injured?'injured':''}">
-    <div class="prow"><span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span><span class="pname">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</span><span class="ovr">${p.ovr}</span></div>
+    <div class="prow"><span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span><span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</span><span class="ovr">${p.ovr}</span></div>
     <div class="meta"><span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} <span class="spacer" style="flex:1"></span><span class="val">${eur(p.value)}</span></div>
     <div class="meta"><span class="real">所属 ${club.name}</span> ${p.injured?`<span class="chg down">🤕${p.injured}轮</span>`:""}</div>
     <div class="actions"><button class="btn sm" onclick="openNegotiation(${p.id})">💬 求购</button>${scoutBtn}</div>
@@ -1453,7 +1455,7 @@ function rivalPlayerCard(p,club){
   return `<div class="pcard ${isWonder(p)?'wonder':''} ${p.injured?'injured':''}">
     <div class="prow">
       <span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span>
-      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name}</span>
       <span class="ovr">${p.ovr}</span>
     </div>
     <div class="meta"><span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} ${key?'<span class="ctr-tag">核心</span>':''} ${inj}
@@ -1592,7 +1594,7 @@ function trainCard(p){
   return `<div class="pcard ${inT?'starter':''}">
     <div class="prow">
       <span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span>
-      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name}</span>
       <span class="ovr">${p.ovr}</span>
     </div>
     <div class="meta"><span>${p.age}岁</span>${potBadge(p)} ${tag} <span class="hint">本职${POS_CN[p.pos]}${p.pos2&&p.pos2.length?'/兼'+p.pos2.map(x=>POS_CN[x]).join('、'):''}</span></div>
@@ -1666,7 +1668,7 @@ function academyCard(p){
   return `<div class="pcard ${(isWonder(p)&&p.scouted)?'wonder':''}">
     <div class="prow">
       <span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span>
-      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name}</span>
       <span class="ovr">${p.ovr}</span>
     </div>
     <div class="meta"><span>${p.age}岁</span>${potBadge(p)} ${wt}</div>
@@ -1836,7 +1838,7 @@ function recallLoan(id){
 function renderLoans(){
   if(!G.loans||!G.loans.length) return "";
   return `<div class="panel"><h2>🤝 租借在外 <span class="hint">（赛季末自动归队，期间你只付 40% 周薪）</span></h2>
-    ${G.loans.map(o=>`<div class="negbox"><div class="l"><span>${NATIONS[o.p.nat].flag} <b>${o.p.name}</b> · ${POS_CN[o.p.pos]} ${o.p.ovr} → <b>${o.club}</b></span><span class="hint">你付 ${eur(round2(o.p.wage*0.4))}/轮</span></div><div style="margin-top:6px"><button class="btn sm ghost" onclick="recallLoan(${o.p.id})">提前召回</button></div></div>`).join("")}
+    ${G.loans.map(o=>`<div class="negbox"><div class="l"><span class="lnk" onclick="openPlayer(${o.p.id})">${NATIONS[o.p.nat].flag} <b>${o.p.name}</b></span> · ${POS_CN[o.p.pos]} ${o.p.ovr} → <b>${o.club}</b><span class="hint" style="margin-left:auto">你付 ${eur(round2(o.p.wage*0.4))}/轮</span></div><div style="margin-top:6px"><button class="btn sm ghost" onclick="recallLoan(${o.p.id})">提前召回</button></div></div>`).join("")}
   </div>`;
 }
 // ---------- 赞助 ----------
@@ -2251,7 +2253,7 @@ function statBoards(vc,vd){
   const rows=statRows();
   const sc=[...rows].filter(o=>o.p.gls).sort((a,b)=>(b.p.gls-a.p.gls)||((b.p.ast||0)-(a.p.ast||0))).slice(0,12);
   const as=[...rows].filter(o=>o.p.ast).sort((a,b)=>(b.p.ast-a.p.ast)||((b.p.gls||0)-(a.p.gls||0))).slice(0,12);
-  const line=(o,v)=>`<div class="l"><span>${NATIONS[o.p.nat]?NATIONS[o.p.nat].flag:""} ${o.p.name} <span class="real">${o.club}</span></span><b>${v}</b></div>`;
+  const line=(o,v)=>`<div class="l"><span class="lnk" onclick="openPlayer(${o.p.id})">${NATIONS[o.p.nat]?NATIONS[o.p.nat].flag:""} ${o.p.name}</span> <span class="real">${o.club}</span><b style="margin-left:auto">${v}</b></div>`;
   return `<div class="panel"><h2>📊 数据榜 <span class="hint">（${flagOf(vc)}${vc} ${DIV_NAMES[vd]||''}）</span></h2>
     <div style="display:flex;gap:14px;flex-wrap:wrap">
       <div style="flex:1;min-width:220px"><div class="hint" style="margin-bottom:4px">⚽ 射手榜</div><div class="negbox">${sc.length?sc.map(o=>line(o,o.p.gls)).join(""):'<div class="hint">暂无</div>'}</div></div>
@@ -2340,7 +2342,7 @@ function viewNational2(){
   </div>
   <div class="panel"><h2>🏆 ${st?st.name:"赛事"}</h2>${campHTML}</div>
   <div class="panel"><h2>征召阵容（最强 11 人）</h2>
-    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${xi.map(p=>`<div class="pcard"><div class="prow"><span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span><span class="pname">${NATIONS[p.nat].flag} ${p.name}</span><span class="ovr">${p.ovr}</span></div><div class="meta">${p.owned?'<span class="ctr-tag" style="background:#1f3a2a;color:var(--up)">你的球员</span>':'<span class="hint">外部球员</span>'} <span>${p.age}岁</span></div></div>`).join("")}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${xi.map(p=>`<div class="pcard"><div class="prow"><span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span><span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name}</span><span class="ovr">${p.ovr}</span></div><div class="meta">${p.owned?'<span class="ctr-tag" style="background:#1f3a2a;color:var(--up)">你的球员</span>':'<span class="hint">外部球员</span>'} <span>${p.age}岁</span></div></div>`).join("")}</div>
   </div>`;
 }
 function playInternational(){
@@ -2406,6 +2408,48 @@ function celebrate(o){
 }
 function showOverlay(html,center){ const m=$("#modal"); m.className="modal"+(center?" center":""); m.innerHTML=html; $("#overlay").classList.add("show"); }
 function closeOverlay(){ $("#overlay").classList.remove("show"); }
+// 球员详情：任意带 id 的球员名字都可点击跳转到此
+function findAnyPlayer(id){ let p=findPlayer(id); if(!p && Array.isArray(G.loans)){ const o=G.loans.find(o=>o&&o.p&&o.p.id===id); if(o) p=o.p; } return p; }
+function openPlayer(id){ const p=findAnyPlayer(id); if(!p){ toast("找不到该球员"); return; } showOverlay(playerModalHTML(p), true); }
+function playerModalHTML(p){
+  const owned=!!p.owned;
+  const inAcademy = G.academy && Array.isArray(G.academy.prospects) && G.academy.prospects.some(x=>x.id===p.id);
+  const loaned = (G.loans||[]).find(o=>o&&o.p&&o.p.id===p.id);
+  const club = clubOf(p.id);
+  let where = owned? `你的球员 · ${G.club}` : inAcademy? `青训学院 · 苗子` : club? `所属 ${club.name}` : (p.free? `自由身 🆓 · 无转会费` : `自由市场`);
+  if(loaned) where += ` · 租出至 ${loaned.club}`;
+  const pot = p.scouted? `${p.potential}` : `~${p.potEst||"?"}?`;
+  const posLine = `${POS_CN[p.pos]||p.pos}（${p.pos}）` + ((p.pos2&&p.pos2.length)? ` · 兼 ${p.pos2.map(x=>(POS_CN[x]||x)).join('、')}` : '');
+  const traitList = (p.traits&&p.traits.length)? p.traits.map(t=>{const T=TRAITS[t]; return T?`<div class="l"><span>${T.icon} <b>${T.name}</b>${T.neg?' <span style="color:var(--down)">负面</span>':''}</span><span class="hint" style="max-width:60%;text-align:right">${T.desc||''}</span></div>`:''; }).join("") : `<div class="hint">无特殊特质</div>`;
+  const ownedInfo = owned? `
+    <div class="l"><span>周薪</span><b>${eur(p.wage)}/轮</b></div>
+    <div class="l"><span>合同</span><b>${p.contractYears} 年${p.contractYears<=1?' ⚠️':''}</b></div>
+    <div class="l"><span>士气</span><b>${moraleEmoji(p)} ${Math.round(p.morale==null?70:p.morale)}${p.wantOut?' · 要求转会':''}</b></div>
+    <div class="l"><span>本赛季出场</span><b>${p.apps||0} 场</b></div>
+    <div class="l"><span>买入价</span><b>${eur(p.buyPrice||0)} ${fmtChg(p)}</b></div>
+    ${G.training&&G.training.includes(p.id)?`<div class="l"><span>训练</span><b>🎓 训练中${p.learnPos?` · 学习 ${POS_CN[p.learnPos]||p.learnPos}`:''}</b></div>`:''}
+  ` : '';
+  const act = (!owned && !inAcademy)? `<button class="btn" style="width:100%;margin-top:10px" onclick="closeOverlay();openNegotiation(${p.id})">💬 谈判 / 求购</button>` : '';
+  return `
+    <h2 style="text-align:center">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</h2>
+    <div class="hint" style="text-align:center;margin:-4px 0 10px">${where}${p.injured?` · 🤕 伤停 ${p.injured} 轮`:''}</div>
+    <div class="squadsum" style="margin-bottom:10px">
+      <div class="ring"><span class="num">${p.ovr}</span><span class="lbl">评分</span></div>
+      <div class="ring"><span class="num">${pot} <span class="stars">${starsStr(potStars(p.scouted?p.potential:p.potEst))}</span></span><span class="lbl">潜力</span></div>
+      <div class="ring"><span class="num">${p.age}</span><span class="lbl">年龄</span></div>
+      <div class="ring"><span class="num" style="font-size:15px">${eur(p.value)}</span><span class="lbl">身价</span></div>
+    </div>
+    <div class="negbox">
+      <div class="l"><span>位置</span><b>${posLine}</b></div>
+      <div class="l"><span>状态</span><b>${FORMS[p.formIdx].name}</b></div>
+      <div class="l"><span>国籍</span><b>${NATIONS[p.nat].flag} ${p.nat}</b></div>
+      ${ownedInfo}
+    </div>
+    <h2 style="font-size:15px;margin:12px 0 6px">🌟 特质</h2>
+    <div class="negbox">${traitList}</div>
+    ${act}
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="closeOverlay()">关闭</button>`;
+}
 
 // ======================= 比赛直播 + 临场指挥 =======================
 // 通用引擎：各类比赛(联赛/杯赛/洲际/世俱/国家队)统一通过 startMatch(cfg) 进入。
