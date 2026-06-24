@@ -532,7 +532,7 @@ function newGame(world, clubIdx, budget){
     cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true, events:true,
     board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
     stadium:{capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}, facil:{medical:0, commercial:0},
-    records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[],
+    records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[], derby:{rival:null,w:0,d:0,l:0},
     lastWageBill:0, finished:false,
   };
   buildSchedules();
@@ -541,7 +541,7 @@ function newGame(world, clubIdx, budget){
   if(G.conti.tier!=null) startConti();             // 有资格则自动加入洲际杯
   rivalClubs().forEach(c=>{ if(c.squad) c.str=round1(clubStr(c)); });
   autoLineup();
-  generateIntake(); genSponsorOffers(); genNTInvites(); refreshStaffMarket();
+  generateIntake(); genSponsorOffers(); genNTInvites(); refreshStaffMarket(); ensureRival();
   pushNews(`欢迎来到 ${flagOf(myCountry)}${myCountry} · <b>${you.name}</b>（${DIV_NAMES[myD]||'联赛'}）！启动资金 ${eur(round1(budget))}，目标联赛前 ${goalRank} 名。`,"good");
   save();
 }
@@ -770,6 +770,20 @@ function genRivalSquad(targetStr, nat){
   return out;
 }
 
+// ---------- 宿敌德比 ----------
+function pickRival(){
+  const me=G.table.find(t=>t.you); if(!me) return null;
+  const mine=clubStr(me); const pool=divClubs(myDiv()).filter(c=>!c.you);
+  if(!pool.length) return null;
+  pool.sort((a,b)=>Math.abs(clubStr(a)-mine)-Math.abs(clubStr(b)-mine));   // 实力最接近的同级对手=天然宿敌
+  return pool[0].name;
+}
+function ensureRival(){
+  if(!G.derby) G.derby={rival:null,w:0,d:0,l:0};
+  const inDiv = G.derby.rival && divClubs(myDiv()).some(c=>!c.you && c.name===G.derby.rival);
+  if(!inDiv){ const r=pickRival(); if(r && r!==G.derby.rival){ G.derby={rival:r,w:0,d:0,l:0}; } }
+}
+function isDerbyOpp(name){ return !!(G.derby && G.derby.rival && G.derby.rival===name); }
 // ---------- 推进一轮 ----------
 function nextRound(){
   if(G.finished) return;
@@ -787,10 +801,10 @@ function nextRound(){
   if(myPair){ oppIdx=myPair[0]===youIdx?myPair[1]:myPair[0]; oppHome=myPair[1]===youIdx; }
   else oppIdx=divIdxs(myD).find(i=>i!==youIdx);
   const opp=G.table[oppIdx];
-  const oppStr=clubStr(opp); const oppTac=opp.tactic||"平衡";
+  const oppStr=clubStr(opp); const oppTac=opp.tactic||"平衡"; const derby=isDerbyOpp(opp.name);
   const ctx={youIdx, oppIdx, oppHome, roundIdx, myD};
   startMatch({
-    comp:"联赛", oppName:opp.name, knockout:false, oppStr, myStr:()=>teamRatings().ovr, allowSub:true, allowTactic:true,
+    comp:derby?"🔥 德比":"联赛", oppName:opp.name, derby, knockout:false, oppStr, myStr:()=>teamRatings().ovr, allowSub:true, allowTactic:true,
     getXG:()=>{ const r=teamRatings(); const tm=tacticMods(r,oppStr); let myAtt=r.att*tm.att,myDef=r.def*tm.def,oppAtt=oppStr,oppDef=oppStr;
       if(TACTIC_BEATS[G.tactic||"平衡"]===oppTac) myAtt*=1.05; else if(TACTIC_BEATS[oppTac]===(G.tactic||"平衡")) oppAtt*=1.05;
       let myXG=clamp((myAtt-oppDef)/9+1.35,0.18,5.2), opXG=clamp((oppAtt-myDef)/9+1.35,0.18,5.2);
@@ -800,7 +814,9 @@ function nextRound(){
   });
 }
 function resolveLeagueMatch(mg,og,ctx){
+  ensureRival();
   const {youIdx, oppIdx, oppHome, roundIdx, myD}=ctx; const opp=G.table[oppIdx];
+  const isDerby=isDerbyOpp(opp.name);
   applyResult(youIdx,oppIdx,mg,og);
   recordMatch(mg,og,opp.name);
   creditGoals(starters(), mg); if(opp.squad) creditGoals(opp.squad, og);
@@ -809,9 +825,9 @@ function resolveLeagueMatch(mg,og,ctx){
   const prize=res==="W"?2.5:res==="D"?0.9:0.2;
   G.cash=round1(G.cash+prize);
   const tacInfo=`对手战术：${opp.tactic||"平衡"}`;
-  // 主场门票收入 + 每轮商业收入
+  // 主场门票收入（德比满座）+ 每轮商业收入
   let gate=0;
-  if(oppHome && G.stadium){ const rate=attendanceRate(clubStr(opp)); const att=Math.round(G.stadium.capacity*rate); gate=round1(att*G.stadium.ticketPrice/1e6); G.stadium.lastAtt=att; G.stadium.lastRate=rate; G.stadium.lastGate=gate; G.cash=round1(G.cash+gate); }
+  if(oppHome && G.stadium){ const rate=clamp(attendanceRate(clubStr(opp))+(isDerby?0.15:0),0.3,1); const att=Math.round(G.stadium.capacity*rate); gate=round1(att*G.stadium.ticketPrice/1e6); G.stadium.lastAtt=att; G.stadium.lastRate=rate; G.stadium.lastGate=gate; G.cash=round1(G.cash+gate); }
   const commercial=commercialIncome(); if(commercial) G.cash=round1(G.cash+commercial);
 
   // 出场记录（首发本轮 +1 app，用于成长）
@@ -860,7 +876,13 @@ function resolveLeagueMatch(mg,og,ctx){
   if(res==="W" && clubStr(opp)>myOvr) bd+=1.5;
   if(res==="L" && clubStr(opp)<myOvr-3) bd-=1.5;
   if(rk<=G.goalRank) bd+=0.6; else if(rk>G.goalRank+2) bd-=0.9;
+  if(isDerby) bd*=2;                       // 德比胜负对董事会影响翻倍
   updateBoard(bd);
+  if(isDerby){                             // 德比额外影响：战绩记录 + 士气 + 声望 + 新闻
+    if(res==="W"){ G.derby.w++; squadMoraleDelta(5); G.rep=clamp((G.rep||50)+1,0,100); pushNews(`🔥 <b>德比大胜！</b>击败宿敌 ${opp.name} ${mg}-${og}，全队士气高涨，声望提升！`,"good"); }
+    else if(res==="L"){ G.derby.l++; squadMoraleDelta(-5); pushNews(`🔥 <b>德比落败……</b>不敌宿敌 ${opp.name} ${og}-${mg}，更衣室低落，球迷不满。`,"bad"); }
+    else { G.derby.d++; pushNews(`🔥 德比战与宿敌 ${opp.name} ${mg}-${og} 握手言和。`,"match"); }
+  }
   if(G.board<=18 && G.board>10 && !G.boardWarned){ G.boardWarned=true; pushNews(`⚠️ 董事会发出<b>最后通牒</b>：再不改善成绩，赛季结束你将被解雇！`,"bad"); }
 
   const finalRound=(G.round>=G.totalRounds);
@@ -1085,6 +1107,7 @@ function endSeason(){
   G.table.forEach(t=>{t.P=t.W=t.D=t.L=t.GF=t.GA=t.pts=0;});
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
+  ensureRival();                          // 升降级后校验/重选宿敌
   startCup(); G.midweekDone=false;
   if(G.conti && G.conti.tier!=null) startConti();                       // 洲际杯自动加入当季赛程
   if(G.wcc && G.wcc.in) startWCC();                                     // 世俱杯自动加入当季赛程
@@ -2126,6 +2149,7 @@ function viewBusiness(){
     <div style="height:8px;border-radius:4px;background:#2a2a2a;overflow:hidden;display:flex;margin:6px 2px"><i style="display:block;height:100%;width:${b}%;background:${bs.c}"></i></div>
     <div class="hint">本赛季目标：联赛前 <b>${G.goalRank}</b> 名。赢球、达成排名预期会提升信心；连败、低于预期会下降。${G.board<=20?'<b style="color:var(--down)"> 信心告急——赛季末若仍过低将被解雇！</b>':''} 信心高 + 声望高 → 更易被豪门挖角。</div>
   </div>
+  ${(G.derby&&G.derby.rival)?`<div class="panel"><h2>🔥 宿敌德比</h2><div class="negbox"><div class="l"><span>宿敌</span><b>${G.derby.rival}</b></div><div class="l"><span>德比战绩（胜-平-负）</span><b>${G.derby.w}-${G.derby.d}-${G.derby.l}</b></div></div><div class="hint" style="margin-top:6px">对阵宿敌的德比战：上座爆满，胜负对董事会信心、士气、声望的影响翻倍。宿敌为同级实力最接近的对手，降级/换队后会重新结仇。</div></div>`:''}
   <div class="panel"><h2>🧑‍🤝‍🧑 更衣室士气</h2><div class="negbox">${moraleHTML}</div>
     <div class="hint" style="margin-top:6px">不满的球员（多为高水平却长期坐板凳者）状态会下滑，甚至要求转会。给他们出场机会或卖掉以稳定更衣室。</div>
   </div>
@@ -2184,6 +2208,7 @@ function acceptJob(clubName){
   G.rep=clamp((G.rep||50)+5,0,100);
   G.board=58; G.boardWarned=false; G.seasonsAtClub=1;                    // 新帅位：董事会信心重置
   { const ns=teamRatings().ovr; G.stadium={capacity:stadiumCap(ns), ticketPrice:Math.round(20+Math.max(0,(ns-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}; G.facil={medical:0, commercial:0}; } // 新俱乐部的球场/设施
+  G.derby={rival:null,w:0,d:0,l:0}; ensureRival();   // 新俱乐部的宿敌
   if(!Array.isArray(G.career)) G.career=[]; G.career.push({club:G.club, fromSeason:G.season});
   G.table.forEach(t=>{ if(!t.you) t.str=round1(clubStr(t)); });
   closeOverlay();
@@ -2533,7 +2558,7 @@ function viewCalendar(){
   let upcoming="";
   if(myLeague) for(let k=0;k<6;k++){ const r=G.round+k; if(r>G.totalRounds) break;
     const pairs=myLeague.sched[(r-1)%G.totalRounds]||[]; const pr=pairs.find(p=>p[0]===youIdx||p[1]===youIdx);
-    if(pr){ const oi=pr[0]===youIdx?pr[1]:pr[0]; upcoming+=`<div class="l"><span>第 ${r} 轮 · 联赛</span><span>vs ${G.table[oi].name} (${Math.round(clubStr(G.table[oi]))})</span></div>`; }
+    if(pr){ const oi=pr[0]===youIdx?pr[1]:pr[0]; const dby=isDerbyOpp(G.table[oi].name); upcoming+=`<div class="l"><span>第 ${r} 轮 · ${dby?'🔥 德比':'联赛'}</span><span>vs ${G.table[oi].name} (${Math.round(clubStr(G.table[oi]))})</span></div>`; }
   }
   const mids=[]; const cc=G.conti&&G.conti.comp, cu=G.cup, nt=G.national&&G.national.comp, w=G.wcc&&G.wcc.comp;
   if(w&&!w.done&&w.fixtures[w.idx]) mids.push(`🌎 世界俱乐部杯 ${w.fixtures[w.idx].round} vs ${w.fixtures[w.idx].opp}`);
@@ -2748,6 +2773,7 @@ function liveMatch(cfg){
   el=document.createElement("div"); el.className="live"; el.id="live";
   el.innerHTML=`<div class="lv-top" id="lvTop"></div><div class="lv-bar" id="lvBar"></div><div class="lv-feed" id="lvFeed"></div><div class="lv-ctrl" id="lvCtrl"></div>`;
   document.body.appendChild(el);
+  if(cfg.derby) pushFeed(0,`🔥 德比大战！${cfg.oppName} 来访，全场座无虚席，气氛火爆！`,"big");
   pushFeed(0,`🟢 开球！${cfg.homeName||G.club} vs ${cfg.oppName}`,"big");
   paintLiveAll(); liveResume();
 }
@@ -2955,6 +2981,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!Array.isArray(G.career)) G.career=[{club:G.club, fromSeason:Math.max(1,(G.season||1)-(G.seasonsAtClub||1)+1)}];
   if(!G.stadium){ const me=(G.table.find(t=>t.you)||{}); const s=teamRatings().ovr||me.str||70; G.stadium={capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}; }
   if(!G.facil) G.facil={medical:0, commercial:0};
+  if(!G.derby) G.derby={rival:null,w:0,d:0,l:0};
   if(G.goalRank==null) G.goalRank=5;
   if(!G.archetype) G.archetype="mid";
   rivalClubs().forEach(c=>{ if(!c.tactic) c.tactic=pick(TACTIC_KEYS); if(c.squad){ c.squad.forEach(p=>p.free=false); c.str=round1(clubStr(c)); } });
@@ -2997,6 +3024,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.national && G.national.nation && !G.national.comp) startStage(G.national.nextStage||"contQual"); // 老存档：国家队赛事自动接上
   if(G.conti && G.conti.tier!=null && !G.conti.comp) startConti();                                      // 老存档：洲际杯自动接上
   if(G.wcc && G.wcc.in && !G.wcc.comp) startWCC();                                                       // 老存档：世俱杯自动接上
+  ensureRival();                                                                                          // 老存档：指定/校验宿敌
   return true; } }catch(e){} return false; }
 function exportSave(){ const d=localStorage.getItem(SAVE_KEY)||JSON.stringify(G); if(navigator.clipboard){ navigator.clipboard.writeText(d).then(()=>toast("存档码已复制到剪贴板"),()=>importPrompt(d)); } else importPrompt(d); }
 function downloadSave(){
