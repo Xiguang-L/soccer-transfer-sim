@@ -254,7 +254,13 @@ const LINE_POS = {GK:["GK"], DF:["CB","CB","LB","RB"], MF:["CM","CM","DM","AM","
 const POS_ALL = Object.keys(POS_CN);
 const REL_POS = {CB:["LB","RB","DM"], LB:["RB","LM","CB"], RB:["LB","RM","CB"], DM:["CM","CB"], CM:["DM","AM","LM","RM"], AM:["CM","LM","RM","ST"], LM:["RM","LW","CM"], RM:["LM","RW","CM"], ST:["AM","LW","RW"], LW:["RW","ST","LM"], RW:["LW","ST","RM"], GK:[]};
 function detailedPos(x){ return POS_LINE[x] ? x : pick(LINE_POS[x]||["CM"]); }   // 大类→具体位置
-function posEff(p, sp){ if(p.pos===sp) return 1; if(p.pos2&&p.pos2.includes(sp)) return 0.92; if(POS_LINE[p.pos]===POS_LINE[sp]) return 0.84; return 0.66; } // 本职/兼职/同线/陌生
+// 位置坐标：x=是否边路(0中路/1边路)，y=纵向高度(0门将→1中锋)。用于计算位置相似度（镜像位如LB/RB相同→易学满级；跨线如CB/ST很远→难学且上限低）
+const POS_XY = { GK:[0,0], CB:[0,0.18], LB:[1,0.28], RB:[1,0.28], DM:[0,0.42], CM:[0,0.52], LM:[1,0.52], RM:[1,0.52], AM:[0,0.66], ST:[0,0.92], LW:[1,0.86], RW:[1,0.86] };
+function pairAff(a,b){ if(a===b) return 1; if((a==="GK")!==(b==="GK")) return 0.08; const A=POS_XY[a],B=POS_XY[b]; if(!A||!B) return 0.3; return clamp(1 - (Math.abs(A[1]-B[1])*1.1 + Math.abs(A[0]-B[0])*0.45), 0.12, 1); }
+function learnAff(p, target){ let m=pairAff(p.pos,target); if(p.prof) for(const k in p.prof){ if(k!==target) m=Math.max(m, pairAff(k,target)*0.95); } return m; } // 学习时：已掌握的相近位置也有迁移
+function masteryCap(p, target){ return clamp(0.65 + learnAff(p,target)*0.35, 0.65, 1.0); }   // 可达熟练度上限：相似→1.0，跨线→~0.72
+function structEff(p, sp){ return clamp(0.5 + pairAff(p.pos,sp)*0.34, 0.5, 0.84); }            // 未训练靠天赋客串（上限0.84）
+function posEff(p, sp){ if(p.pos===sp) return 1; const tr=(p.prof&&p.prof[sp]!=null)?p.prof[sp]:0; return Math.max(structEff(p,sp), tr); } // 取「天赋客串」与「已训练熟练度」较高者
 // ---------- 球员特质 ----------
 const TRAITS = {
   poacher:  {name:"单刀王",     icon:"🎯", line:["FW"], desc:"门前嗅觉敏锐，抢点与单刀进球更多"},
@@ -461,12 +467,13 @@ function makePlayer(pos, opt){
   const nat = (natFix&&NATIONS[natFix])?natFix:weightedPick(NAT_KEYS.map(k=>[k,NATIONS[k].w]));
   const name = nameFor(nat);
   const posD = detailedPos(pos);
-  const pos2=[];
+  const pos2=[]; const prof={};
   if(posD!=="GK"){ const rel=REL_POS[posD]||[]; const n=Math.random()<0.45?1:(Math.random()<0.18?2:0); for(let i=0;i<n && rel.length;i++){ const r=pick(rel); if(r!==posD && !pos2.includes(r)) pos2.push(r); } }
+  pos2.forEach(x=>{ prof[x]=round2(clamp(0.65+pairAff(posD,x)*0.35,0.65,1.0)); });   // 自带副位置=已发展到其上限（镜像位接近满级）
   const traits=genTraits(POS_LINE[posD], ovr, potential, age);
   const fv = fairValue(ovr,age)*FORMS[formIdx].mult;
   return {
-    id:_id++, name, nat, pos:posD, pos2, traits, morale:70, age, ovr, potential,
+    id:_id++, name, nat, pos:posD, pos2, prof, traits, morale:70, age, ovr, potential,
     potEst: clamp(potential+rint(-7,7), ovr, 99), // 未侦察时的模糊估计
     scouted:false,
     formIdx, injured:0, apps:0,
@@ -629,12 +636,13 @@ function tacticMods(r, oppStr){
 }
 function autoLineup(){
   const ss=slots(); G.lineup=new Array(ss.length).fill(null);
-  const used=new Set();
-  const avail=G.squad.filter(p=>!p.injured).sort((a,b)=>b.ovr-a.ovr);
-  ss.forEach((s,i)=>{ const c=avail.find(p=>!used.has(p.id)&&p.pos===s.pos); if(c){ G.lineup[i]=c.id; used.add(c.id);} });                                   // 本职
-  ss.forEach((s,i)=>{ if(G.lineup[i]==null){ const c=avail.find(p=>!used.has(p.id)&&(p.pos2&&p.pos2.includes(s.pos))); if(c){ G.lineup[i]=c.id; used.add(c.id);} } }); // 兼职
-  ss.forEach((s,i)=>{ if(G.lineup[i]==null){ const c=avail.find(p=>!used.has(p.id)&&POS_LINE[p.pos]===POS_LINE[s.pos]); if(c){ G.lineup[i]=c.id; used.add(c.id);} } }); // 同线
-  ss.forEach((s,i)=>{ if(G.lineup[i]==null){ const c=avail.find(p=>!used.has(p.id)); if(c){ G.lineup[i]=c.id; used.add(c.id);} } });                              // 兜底
+  const avail=G.squad.filter(p=>!p.injured);
+  // 贪心全局最优分配：按 评分×状态×位置熟练度 给每个 (球员,位置) 打分，从高到低占位
+  const pairs=[];
+  ss.forEach((s,i)=>{ avail.forEach(p=>{ pairs.push([p.ovr*FORMS[p.formIdx].mult*posEff(p,s.pos), i, p.id]); }); });
+  pairs.sort((a,b)=>b[0]-a[0]);
+  const usedP=new Set(), usedS=new Set();
+  for(const pr of pairs){ if(usedS.has(pr[1])||usedP.has(pr[2])) continue; G.lineup[pr[1]]=pr[2]; usedS.add(pr[1]); usedP.add(pr[2]); if(usedS.size>=ss.length) break; }
   syncStarters();
 }
 function setFormation(f){ if(!FORMATIONS[f]) return; G.formation=f; autoLineup(); save(); render(); }
@@ -997,7 +1005,16 @@ function endSeason(){
       const inT=G.training.includes(p.id);
       if(inT && p.age<=27 && gap>0) p.ovr=clamp(p.ovr+rint(0,1)+(G.coachLevel>=2?1:0),48,99); // 训练额外加成
       if(p.age>=31 && !inT && Math.random()<0.4) p.ovr=clamp(p.ovr-rint(0,1),42,99);          // 老将自然衰退
-      if(inT && p.learnPos && p.pos!==p.learnPos){ if(!Array.isArray(p.pos2)) p.pos2=[]; if(!p.pos2.includes(p.learnPos)){ p.pos2.push(p.learnPos); pushNews(`🎓 <b>${p.name}</b> 通过训练掌握了新位置：${POS_CN[p.learnPos]}`,"good"); } p.learnPos=null; } // 训练改造位置
+      if(inT && p.learnPos && p.pos!==p.learnPos){   // 训练改造位置：逐季提升，速度/上限取决于与现有位置的相似度
+        if(!p.prof) p.prof={}; if(!Array.isArray(p.pos2)) p.pos2=[];
+        const tgt=p.learnPos, aff=learnAff(p,tgt), cap=masteryCap(p,tgt);
+        const gain=clamp(aff*aff*0.7+0.06, 0.06, 0.78);   // 相似位掉得快(镜像≈1季)，跨线很慢
+        const cur=(p.prof[tgt]!=null)?p.prof[tgt]:structEff(p,tgt);
+        const nv=round2(Math.min(cap, cur+gain)); p.prof[tgt]=nv;
+        if(!p.pos2.includes(tgt)) p.pos2.push(tgt);
+        if(nv>=cap-0.02){ pushNews(`🎓 <b>${p.name}</b> 完全掌握了 ${POS_CN[tgt]}（熟练度 ${Math.round(nv*100)}%）。`,"good"); p.learnPos=null; }
+        else pushNews(`📈 <b>${p.name}</b> 改造 ${POS_CN[tgt]} 中（熟练度 ${Math.round(nv*100)}%，可继续训练）。`,"match");
+      }
     } else {
       if(p.age<=23 && gap>0) p.ovr=clamp(p.ovr+Math.round(gap*rnd(0.16,0.36)),48,99);
       else if(p.age<=27 && gap>0 && Math.random()<0.5) p.ovr=clamp(p.ovr+rint(0,2),48,99);
@@ -1311,9 +1328,8 @@ function toggleStarter(id){
   if(inLineup(id)){ removeFromLineup(id); save(); render(); return; }
   if(p.injured){ toast("伤病球员无法首发"); return; }
   const ss=slots();
-  let idx=ss.findIndex((s,i)=>G.lineup[i]==null && s.pos===p.pos);  // 本职空位
-  if(idx<0) idx=ss.findIndex((s,i)=>G.lineup[i]==null && POS_LINE[s.pos]===POS_LINE[p.pos]); // 同线空位
-  if(idx<0) idx=G.lineup.indexOf(null);                             // 任意空位
+  let idx=-1, best=-1;                                              // 放进熟练度最高的空位
+  ss.forEach((s,i)=>{ if(G.lineup[i]==null){ const e=posEff(p,s.pos); if(e>best){ best=e; idx=i; } } });
   if(idx<0){ toast("首发已满 11 人，去球场拖动替换或先下场一人"); return; }
   placeInLineup(id, idx);
 }
@@ -1440,7 +1456,7 @@ function pitchSlotHTML(s,i){
   const p=(id!=null)&&G.squad.find(x=>x.id===id);
   if(p){
     const ef=posEff(p,s.pos); const oop=ef<1;
-    const effTxt = ef===1?"本职" : ef>=0.92?`兼职 ${POS_CN[s.pos]}（-8%）` : ef>=0.84?`非自然位置 ${POS_CN[s.pos]}（-16%）` : `陌生位置 ${POS_CN[s.pos]}（-34%）`;
+    const effTxt = ef>=0.999?"本职" : `${POS_CN[s.pos]} 熟练度 ${Math.round(ef*100)}%`;
     return `<div class="slot ${oop?'oop':''}" style="left:${s.x}%;top:${s.y}%" draggable="true"
       ondragstart="dragData={from:'slot',slot:${i},id:${p.id}}" ondragover="event.preventDefault()" ondrop="dropOnSlot(${i})"
       onclick="clickSlot(${i})" title="${p.name}（本职 ${POS_CN[p.pos]}${p.pos2&&p.pos2.length?' / 兼 '+p.pos2.map(x=>POS_CN[x]).join('、'):''}｜该位置：${effTxt}）">
@@ -1710,8 +1726,8 @@ function trainCard(p){
       <span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name}</span>
       <span class="ovr">${p.ovr}</span>
     </div>
-    <div class="meta"><span>${p.age}岁</span>${potBadge(p)} ${tag} <span class="hint">本职${POS_CN[p.pos]}${p.pos2&&p.pos2.length?'/兼'+p.pos2.map(x=>POS_CN[x]).join('、'):''}</span></div>
-    <div class="meta">${learnSel} ${p.learnPos?`<span class="ctr-tag" style="background:#3a2c4a;color:#d8a8ff">学:${POS_CN[p.learnPos]}${inT?'':'（需进训练名额）'}</span>`:''}</div>
+    <div class="meta"><span>${p.age}岁</span>${potBadge(p)} ${tag} <span class="hint">本职${POS_CN[p.pos]}${p.pos2&&p.pos2.length?'/兼'+p.pos2.map(x=>`${POS_CN[x]}${(p.prof&&p.prof[x]!=null)?Math.round(p.prof[x]*100)+'%':''}`).join('、'):''}</span></div>
+    <div class="meta">${learnSel} ${p.learnPos?`<span class="ctr-tag" style="background:#3a2c4a;color:#d8a8ff">学:${POS_CN[p.learnPos]}${(p.prof&&p.prof[p.learnPos]!=null)?` ${Math.round(p.prof[p.learnPos]*100)}%`:''}${inT?'':'（需进训练名额）'}</span>`:''}</div>
     <div class="actions">
       <button class="btn sm ${inT?'':'ghost'}" onclick="toggleTraining(${p.id})">${inT?'✓ 训练中':'加入训练'}</button>
     </div>
@@ -2661,7 +2677,7 @@ function playerModalHTML(p){
   let where = owned? `你的球员 · ${G.club}` : inAcademy? `青训学院 · 苗子` : club? `所属 ${club.name}` : (p.free? `自由身 🆓 · 无转会费` : `自由市场`);
   if(loaned) where += ` · 租出至 ${loaned.club}`;
   const pot = p.scouted? `${p.potential}` : `~${p.potEst||"?"}?`;
-  const posLine = `${POS_CN[p.pos]||p.pos}（${p.pos}）` + ((p.pos2&&p.pos2.length)? ` · 兼 ${p.pos2.map(x=>(POS_CN[x]||x)).join('、')}` : '');
+  const posLine = `${POS_CN[p.pos]||p.pos}（${p.pos}）` + ((p.pos2&&p.pos2.length)? ` · 兼 ${p.pos2.map(x=>`${POS_CN[x]||x}${(p.prof&&p.prof[x]!=null)?` ${Math.round(p.prof[x]*100)}%`:''}`).join('、')}` : '');
   const traitList = (p.traits&&p.traits.length)? p.traits.map(t=>{const T=TRAITS[t]; return T?`<div class="l"><span>${T.icon} <b>${T.name}</b>${T.neg?' <span style="color:var(--down)">负面</span>':''}</span><span class="hint" style="max-width:60%;text-align:right">${T.desc||''}</span></div>`:''; }).join("") : `<div class="hint">无特殊特质</div>`;
   const ownedInfo = owned? `
     <div class="l"><span>周薪</span><b>${eur(p.wage)}/轮</b></div>
@@ -2973,7 +2989,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.rivalViewConf==null) G.rivalViewConf=G.conf;
   if(G.leagueViewDiv==null) G.leagueViewDiv=myDiv();
   // 迁移：老存档球员是大类位置(GK/DF/MF/FW)，转成具体位置 + 初始化兼职位置
-  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); if(p.morale==null) p.morale=70; };
+  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!p.prof||typeof p.prof!=="object"){ p.prof={}; p.pos2.forEach(x=>{ p.prof[x]=round2(clamp(0.65+pairAff(p.pos,x)*0.35,0.65,1.0)); }); } if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); if(p.morale==null) p.morale=70; };
   allPlayers().forEach(fixPos);
   if(G.academy && Array.isArray(G.academy.prospects)) G.academy.prospects.forEach(fixPos);
   if(Array.isArray(G.loans)) G.loans.forEach(o=>fixPos(o.p));
