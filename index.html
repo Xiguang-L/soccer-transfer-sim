@@ -528,7 +528,7 @@ function newGame(world, clubIdx, budget){
     staff:{head:null,att:null,mid:null,def:null,gk:null,med:null}, staffMarket:[],
     formation:"4-3-3", tactic:"平衡", lineup:[], _sel:null,
     offers:[], academy:{level:1, prospects:[], targetNat:null},
-    rep:50, sponsorSlots:{kit:null,sleeve:null,naming:null}, sponsorOffers:[], installments:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
+    rep:50, sponsorSlots:{}, sponsorOffers:[], partners:[], partnerOffers:[], installments:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
     conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
     cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true, events:true,
     board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
@@ -1131,6 +1131,7 @@ function endSeason(){
   ensureSponsorSlots();
   paySponsorBonuses({ league: rank===1, conti: (qualifyTier(rank, finishDiv)!=null), cup: !!G._wonCup });
   SPONSOR_TKEYS.forEach(t=>{ const s=G.sponsorSlots[t]; if(s){ s.seasonsLeft--; if(s.seasonsLeft<=0){ pushNews(`💼 ${SPONSOR_TYPES[t].name} ${s.brand} 合约到期。`,"match"); G.sponsorSlots[t]=null; } } });
+  if(Array.isArray(G.partners)){ G.partners.forEach(s=>s.seasonsLeft--); G.partners=G.partners.filter(s=>s.seasonsLeft>0); }
   G._wonCup=false;
   // 转会分期付款本季扣款
   if(Array.isArray(G.installments) && G.installments.length){ let paid=0; G.installments.forEach(it=>{ paid+=it.perSeason; it.seasonsLeft--; }); G.installments=G.installments.filter(it=>it.seasonsLeft>0); if(paid>0){ G.cash=round1(G.cash-paid); pushNews(`💳 转会分期付款本季支出 -${eur(round1(paid))}（尚余 ${G.installments.length} 笔）。`,"match"); } }
@@ -2102,13 +2103,32 @@ function renderLoans(){
 // ---------- 赞助（多类型槽位 + 绩效奖金） ----------
 const SPONSOR_NAMES=["远东航空","北辰银行","蓝鲸保险","云图科技","赤岭能源","海格汽车","星汉手机","绿源饮料","金沙地产","环宇物流","昆仑石油","天枢传媒"];
 const SPONSOR_SUFFIX=["","控股","集团","国际"];
-const SPONSOR_TYPES={ kit:{name:"球衣赞助",icon:"👕",mult:1.0}, sleeve:{name:"袖标赞助",icon:"🎽",mult:0.5}, naming:{name:"球场冠名",icon:"🏟️",mult:0.75} };
-const SPONSOR_TKEYS=["kit","sleeve","naming"];
+const SPONSOR_TYPES={
+  main:   {name:"胸前主赞助", icon:"👕", mult:1.0},
+  kit:    {name:"球衣供应商", icon:"🥾", mult:0.7},
+  back:   {name:"背部赞助",   icon:"🔢", mult:0.5},
+  sleeve: {name:"袖标赞助",   icon:"🎽", mult:0.4},
+  naming: {name:"球场冠名",   icon:"🏟️", mult:0.75},
+};
+const SPONSOR_TKEYS=["main","kit","back","sleeve","naming"];
 const SPONSOR_BONUS_CN={league:"联赛夺冠",conti:"进入洲际赛",cup:"国内杯夺冠"};
-function ensureSponsorSlots(){ if(!G.sponsorSlots||typeof G.sponsorSlots!=="object"){ G.sponsorSlots={kit:null,sleeve:null,naming:null}; if(Array.isArray(G.sponsors)) G.sponsors.forEach((s,i)=>{ const t=SPONSOR_TKEYS[i]; if(t&&s) G.sponsorSlots[t]={brand:s.name,per:s.per,seasonsLeft:s.seasonsLeft,bonus:{}}; }); } SPONSOR_TKEYS.forEach(t=>{ if(!(t in G.sponsorSlots)) G.sponsorSlots[t]=null; }); }
+const PARTNER_MAX=6;
+function brandValue(){   // 品牌价值/全球人气：随声望、球星、荣誉、联赛级别上涨，放大所有赞助与商业收入
+  const rep=G.rep||50;
+  const stars=[...(G.squad||[])].sort((a,b)=>b.ovr-a.ovr).slice(0,5).reduce((a,p)=>a+Math.max(0,p.ovr-72),0);
+  const trophies=(G.honors||[]).length;
+  return clamp(Math.round(rep*0.55 + stars*1.4 + trophies*1.6 + (myDiv()===0?12:0)), 10, 100);
+}
+function brandMult(){ return 0.6 + brandValue()/100*0.85; }   // 品牌系数 0.6~1.45
+function ensureSponsorSlots(){
+  if(!G.sponsorSlots||typeof G.sponsorSlots!=="object"){ G.sponsorSlots={}; if(Array.isArray(G.sponsors)) G.sponsors.forEach((s,i)=>{ const t=SPONSOR_TKEYS[i]; if(t&&s) G.sponsorSlots[t]={brand:s.name,per:s.per,seasonsLeft:s.seasonsLeft,bonus:{}}; }); }
+  SPONSOR_TKEYS.forEach(t=>{ if(!(t in G.sponsorSlots)) G.sponsorSlots[t]=null; });
+  if(!Array.isArray(G.partners)) G.partners=[];
+  if(!Array.isArray(G.partnerOffers)) G.partnerOffers=[];
+}
 function sponsorBasePer(type){
   const rep=G.rep||50, div0=(myDiv()===0);
-  let base=(0.18 + rep/100*0.45 + (div0?0.22:0)) * SPONSOR_TYPES[type].mult;
+  let base=(0.16 + rep/100*0.4 + (div0?0.2:0)) * SPONSOR_TYPES[type].mult * brandMult();
   if(type==="naming" && G.stadium) base*=clamp(G.stadium.capacity/30000, 0.6, 2.2);   // 冠名价值随球场规模
   return base;
 }
@@ -2124,10 +2144,13 @@ function genSponsorOffers(){
       G.sponsorOffers.push({type:t, name:pick(SPONSOR_NAMES)+pick(SPONSOR_SUFFIX), per, signOn:round1(per*rnd(4,7)), seasons:rint(2,4), bonus});
     }
   });
+  // 官方合作伙伴：可叠加（最多 PARTNER_MAX 个），每季多个小额报价
+  G.partnerOffers=[];
+  for(let n=0,pn=rint(3,5);n<pn;n++){ const per=round2((0.05+(G.rep||50)/100*0.11)*brandMult()*rnd(0.8,1.3)); G.partnerOffers.push({name:pick(SPONSOR_NAMES)+pick(SPONSOR_SUFFIX), per, signOn:round1(per*rnd(3,5)), seasons:rint(1,3)}); }
 }
 function signSponsor(idx){
-  ensureSponsorSlots(); const o=G.sponsorOffers[idx]; if(!o) return;
-  if(G.sponsorSlots[o.type]){ toast(`${SPONSOR_TYPES[o.type].name} 槽位已被占用`); return; }
+  ensureSponsorSlots(); const o=G.sponsorOffers[idx]; if(!o||!SPONSOR_TYPES[o.type]) return;
+  if(G.sponsorSlots[o.type]){ toast(`${SPONSOR_TYPES[o.type].name} 已被占用`); return; }
   G.cash=round1(G.cash+o.signOn);
   G.sponsorSlots[o.type]={brand:o.name, per:o.per, seasonsLeft:o.seasons, bonus:o.bonus||{}};
   G.sponsorOffers=G.sponsorOffers.filter(x=>x.type!==o.type);   // 同类型其它报价作废
@@ -2136,7 +2159,17 @@ function signSponsor(idx){
   pushNews(`💼 签约${SPONSOR_TYPES[o.type].name} <b>${o.name}</b>：签约金 ${eur(o.signOn)}，每轮 +${eur(o.per)}${bz?`；绩效：${bz}`:''}。`,"good");
   save(); render();
 }
-function sponsorIncome(){ ensureSponsorSlots(); return round2(SPONSOR_TKEYS.reduce((a,t)=>a+(G.sponsorSlots[t]?G.sponsorSlots[t].per:0),0)); }
+function signPartner(idx){
+  ensureSponsorSlots(); const o=G.partnerOffers[idx]; if(!o) return;
+  if(G.partners.length>=PARTNER_MAX){ toast(`官方合作伙伴已满（${PARTNER_MAX} 个）`); return; }
+  G.cash=round1(G.cash+o.signOn);
+  G.partners.push({name:o.name, per:o.per, seasonsLeft:o.seasons});
+  G.partnerOffers.splice(idx,1);
+  toast(`签约官方合作伙伴：${o.name}`);
+  pushNews(`🤝 签约官方合作伙伴 <b>${o.name}</b>：签约金 ${eur(o.signOn)}，每轮 +${eur(o.per)}。`,"good");
+  save(); render();
+}
+function sponsorIncome(){ ensureSponsorSlots(); const ex=SPONSOR_TKEYS.reduce((a,t)=>a+(G.sponsorSlots[t]?G.sponsorSlots[t].per:0),0); const pa=(G.partners||[]).reduce((a,s)=>a+s.per,0); return round2(ex+pa); }
 function paySponsorBonuses(ach){   // 赛季末按达成情况发放赞助绩效奖金
   ensureSponsorSlots(); let total=0; const hits=[];
   SPONSOR_TKEYS.forEach(t=>{ const s=G.sponsorSlots[t]; if(!s||!s.bonus) return; ["league","conti","cup"].forEach(k=>{ if(ach[k] && s.bonus[k]){ total+=s.bonus[k]; hits.push(`${s.brand}·${SPONSOR_BONUS_CN[k]} +${eur(s.bonus[k])}`); } }); });
@@ -2245,7 +2278,9 @@ function viewBusiness(){
   ensureSponsorSlots();
   const bzTxt=b=>Object.keys(b||{}).map(k=>`${SPONSOR_BONUS_CN[k]} +${eur(b[k])}`).join("、");
   const active=SPONSOR_TKEYS.map(t=>{ const s=G.sponsorSlots[t], T=SPONSOR_TYPES[t]; return `<div class="negbox"><div class="l"><span>${T.icon} <b>${T.name}</b>${s?` · ${s.brand}`:''}</span><span>${s?`+${eur(s.per)}/轮 · 剩 ${s.seasonsLeft} 季`:'<span class="hint">空缺</span>'}</span></div>${s&&bzTxt(s.bonus)?`<div class="hint" style="margin-top:4px">绩效：${bzTxt(s.bonus)}</div>`:''}</div>`; }).join("");
-  const offers=(G.sponsorOffers||[]).map((o,i)=>{ const T=SPONSOR_TYPES[o.type]; if(!T) return ''; return `<div class="negbox"><div class="l"><span>${T.icon} <b>${o.name}</b> <span class="hint">${T.name}</span></span><span>签约金 ${eur(o.signOn)} · +${eur(o.per)}/轮 · ${o.seasons}季</span></div>${bzTxt(o.bonus)?`<div class="hint" style="margin-top:4px">绩效：${bzTxt(o.bonus)}</div>`:''}<div style="margin-top:8px"><button class="btn sm ${G.sponsorSlots[o.type]?'ghost':''}" onclick="signSponsor(${i})">${G.sponsorSlots[o.type]?'该类型已签约':'签约'}</button></div></div>`; }).join("")||`<div class="hint">暂无可签约赞助（每赛季刷新；签满后该类型不再有报价）。</div>`;
+  const offers=(G.sponsorOffers||[]).map((o,i)=>{ const T=SPONSOR_TYPES[o.type]; if(!T) return ''; return `<div class="negbox"><div class="l"><span>${T.icon} <b>${o.name}</b> <span class="hint">${T.name}</span></span><span>签约金 ${eur(o.signOn)} · +${eur(o.per)}/轮 · ${o.seasons}季</span></div>${bzTxt(o.bonus)?`<div class="hint" style="margin-top:4px">绩效：${bzTxt(o.bonus)}</div>`:''}<div style="margin-top:8px"><button class="btn sm ${G.sponsorSlots[o.type]?'ghost':''}" onclick="signSponsor(${i})">${G.sponsorSlots[o.type]?'该类型已签约':'签约'}</button></div></div>`; }).join("")||`<div class="hint">五个专属赞助位都已签满或暂无报价（每赛季刷新）。</div>`;
+  const partnersActive=(G.partners||[]).length? (G.partners||[]).map(s=>`<div class="l"><span>🤝 ${s.name}</span><span>+${eur(s.per)}/轮 · 剩 ${s.seasonsLeft} 季</span></div>`).join("") : `<div class="hint">暂无官方合作伙伴</div>`;
+  const partnerOffersHTML=(G.partnerOffers||[]).length? (G.partnerOffers||[]).map((o,i)=>`<div class="negbox"><div class="l"><span>🤝 <b>${o.name}</b></span><span>签约金 ${eur(o.signOn)} · +${eur(o.per)}/轮 · ${o.seasons}季</span></div><div style="margin-top:8px"><button class="btn sm ${G.partners.length>=PARTNER_MAX?'ghost':''}" onclick="signPartner(${i})">${G.partners.length>=PARTNER_MAX?'伙伴已满':'签约'}</button></div></div>`).join("") : `<div class="hint">暂无合作伙伴报价（每赛季刷新）。</div>`;
   const bs=boardStatus(); const b=Math.round(G.board==null?60:G.board);
   const careerHTML=(G.career||[]).map((c,i)=>{ const to=(G.career[i+1]?G.career[i+1].fromSeason-1:G.season); return `<div class="l"><span>🏛️ ${c.club}</span><span class="hint">S${c.fromSeason}–S${to}</span></div>`; }).join("")||`<div class="hint">—</div>`;
   const unhappy=G.squad.filter(p=>(p.morale==null?70:p.morale)<35).sort((a,b)=>(a.morale||0)-(b.morale||0));
@@ -2284,8 +2319,14 @@ function viewBusiness(){
   <div class="panel"><h2>📜 执教生涯</h2><div class="negbox">${careerHTML}</div></div>
   <div class="panel"><h2>📈 执教邀请（挖角）</h2>${jobs}</div>
   ${(G.installments&&G.installments.length)?`<div class="panel"><h2>💳 转会分期付款</h2><div class="negbox">${G.installments.map(it=>`<div class="l"><span>${it.name}</span><span>${eur(it.perSeason)}/季 · 剩 ${it.seasonsLeft} 季</span></div>`).join("")}<div class="l"><span><b>每季合计</b></span><b style="color:var(--down)">${eur(round1(G.installments.reduce((a,it)=>a+it.perSeason,0)))}</b></div></div></div>`:''}
-  <div class="panel"><h2>🤝 当前赞助商</h2>${active}</div>
-  <div class="panel"><h2>✍️ 可签约赞助 <span class="hint">（最多 3 个，赛季末刷新）</span></h2>${offers}</div>`;
+  <div class="panel"><h2>📣 品牌与赞助 <span class="hint">（品牌价值 ${brandValue()}/100 · 系数 ×${brandMult().toFixed(2)} · 赞助合计 ${eur(sponsorIncome())}/轮）</span></h2>
+    <div class="hint" style="margin-bottom:6px">品牌价值随<b>声望 / 队内球星 / 荣誉 / 联赛级别</b>上涨，放大所有赞助与合作伙伴报价——签大牌、夺冠会让赞助更值钱。</div>
+    ${active}
+    <div class="hint" style="margin:10px 0 4px">🤝 官方合作伙伴（可叠加，最多 ${PARTNER_MAX} 个 · 已签 ${(G.partners||[]).length}）</div>
+    <div class="negbox">${partnersActive}</div>
+  </div>
+  <div class="panel"><h2>✍️ 专属赞助位报价 <span class="hint">（赛季末刷新）</span></h2>${offers}</div>
+  <div class="panel"><h2>🤝 官方合作伙伴报价</h2>${partnerOffersHTML}</div>`;
 }
 // ---------- 挖角 / 换帅 ----------
 // ---------- 士气 / 董事会信心 / 生涯 ----------
