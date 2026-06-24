@@ -478,6 +478,7 @@ function makePlayer(pos, opt){
     scouted:false,
     formIdx, injured:0, apps:0,
     value: round1(fv*rnd(0.9,1.12)),
+    releaseClause: Math.random()<0.28 ? round1(fv*rnd(0.9,1.12)*rnd(1.7,2.8)) : null,  // 部分球员自带解约金条款
     owned:false, buyPrice:0, starter:false,
     wage:0, contractYears:0,
   };
@@ -527,7 +528,7 @@ function newGame(world, clubIdx, budget){
     staff:{head:null,att:null,mid:null,def:null,gk:null,med:null}, staffMarket:[],
     formation:"4-3-3", tactic:"平衡", lineup:[], _sel:null,
     offers:[], academy:{level:1, prospects:[], targetNat:null},
-    rep:50, sponsorSlots:{kit:null,sleeve:null,naming:null}, sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
+    rep:50, sponsorSlots:{kit:null,sleeve:null,naming:null}, sponsorOffers:[], installments:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
     conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
     cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true, events:true,
     board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
@@ -960,6 +961,26 @@ function evolveMarket(){
 function aiTransfers(){
   const rivals=rivalClubs().filter(c=>c.squad);   // 仅已生成阵容的俱乐部参与转会
   if(!rivals.length) return;
+  // 0) 别队触发你球员的解约金（条款偏低=划算 → 更可能被挖走）
+  if(G.squad.length>12){
+    G.squad.slice().forEach(p=>{
+      if(!p.releaseClause || p.starter===undefined) return;
+      const bargain=p.releaseClause < p.value*1.7;           // 解约金低于身价1.7倍才算划算
+      const prob=(bargain?0.05:0.012)*(p.ovr>=82?1.5:1);
+      if(Math.random()<prob){
+        const buyer=pick(rivals.filter(c=>clubStr(c)>=p.ovr-5 && c.squad.length<24));
+        if(!buyer||G.squad.length<=11) return;
+        const fee=p.releaseClause; G.cash=round1(G.cash+fee);
+        noteSale(p,fee); inductHOF(p,false);
+        const i=G.squad.findIndex(x=>x.id===p.id); if(i<0) return;
+        p.owned=false; p.starter=false; p.wage=0; p.contractYears=0; p.releaseClause=null; untrain(p.id); removeFromLineup(p.id);
+        G.offers=(G.offers||[]).filter(o=>o.playerId!==p.id);
+        G.squad.splice(i,1); buyer.squad.push(p); buyer.str=round1(clubStr(buyer));
+        squadMoraleDelta(-2);
+        pushNews(`💸 <b>${buyer.name}</b> 触发了 <b>${p.name}</b> 的解约金（${eur(fee)}），将其签走！`,"bad");
+      }
+    });
+  }
   // 1) 对手从市场签人（抢你的目标，真实进入对手阵容）
   let signings=rint(0,2);
   for(let s=0;s<signings;s++){
@@ -1111,6 +1132,8 @@ function endSeason(){
   paySponsorBonuses({ league: rank===1, conti: (qualifyTier(rank, finishDiv)!=null), cup: !!G._wonCup });
   SPONSOR_TKEYS.forEach(t=>{ const s=G.sponsorSlots[t]; if(s){ s.seasonsLeft--; if(s.seasonsLeft<=0){ pushNews(`💼 ${SPONSOR_TYPES[t].name} ${s.brand} 合约到期。`,"match"); G.sponsorSlots[t]=null; } } });
   G._wonCup=false;
+  // 转会分期付款本季扣款
+  if(Array.isArray(G.installments) && G.installments.length){ let paid=0; G.installments.forEach(it=>{ paid+=it.perSeason; it.seasonsLeft--; }); G.installments=G.installments.filter(it=>it.seasonsLeft>0); if(paid>0){ G.cash=round1(G.cash-paid); pushNews(`💳 转会分期付款本季支出 -${eur(round1(paid))}（尚余 ${G.installments.length} 笔）。`,"match"); } }
   genSponsorOffers();
   refreshStaffMarket();   // 新赛季教练市场刷新
   genJobOffers(rank);
@@ -1164,14 +1187,19 @@ function dealPlayer(){
   if(d.fromRival){ const c=G.table.find(t=>t.name===d.fromRival); return c&&c.squad?c.squad.find(x=>x.id===d.id):null; }
   return G.market.find(x=>x.id===d.id);
 }
+let negPlan=0;   // 转会付款方式：0=一次性，N=分 N 季
+function setNegPlan(n){ negPlan=n; [0,2,3].forEach(k=>{ const b=document.getElementById("planBtn"+k); if(b) b.className="btn sm"+(k===n?"":" ghost"); }); syncNeg(); }
+function planUpfront(fee){ const agent=round1(fee*0.08); return negPlan>0 ? round1(fee*0.4+agent) : round1(fee+agent); }   // 即时支出
 function openNegotiation(id){
   const fromRival=clubOf(id);
   const p = fromRival ? fromRival.squad.find(x=>x.id===id) : G.market.find(x=>x.id===id);
   if(!p) return;
   if(squadCount()>=SQUAD_MAX){ toast(`阵容已满（含租出，上限 ${SQUAD_MAX} 人），先卖人`); return; }
   if(fromRival && fromRival.squad.length<=12){ toast(`${fromRival.name} 阵容人数不足，不愿放人`); return; }
+  negPlan=0;
   const key = fromRival? isKeyPlayer(fromRival,p) : false;
   const free = !fromRival && !!p.free;
+  const clauseBtn = (p.releaseClause && p.releaseClause<=G.cash) ? `<button class="btn" style="width:100%;margin-bottom:10px;background:#3a2c20;border-color:var(--gold)" onclick="signByClause(${p.id})">💸 支付解约金 ${eur(p.releaseClause)} 直接签下（免谈判）</button>` : (p.releaseClause?`<div class="hint" style="margin-bottom:8px">该球员有解约金条款 ${eur(p.releaseClause)}（现金不足以触发）</div>`:"");
   const ask = fromRival
     ? round1(p.value*clamp(1.25+(key?0.35:0)+(p.formIdx-2)*0.06+rnd(0,0.1),1.1,2.3))
     : (free?0:askingFee(p));
@@ -1183,6 +1211,7 @@ function openNegotiation(id){
   showOverlay(`
     <h2>💬 转会谈判 · ${NATIONS[p.nat].flag} ${p.name}</h2>
     <div class="hint" style="margin:-4px 0 8px">${free?"🆓 自由球员 · 无转会费（只需谈周薪与合同）":srcLabel}</div>
+    ${clauseBtn}
     <div class="negbox">
       <div class="l"><span>位置 / 年龄 / 评分</span><b>${POS_CN[p.pos]} · ${p.age}岁 · ${p.ovr}</b></div>
       <div class="l"><span>当前身价</span><b>${eur(p.value)}</b></div>
@@ -1195,9 +1224,12 @@ function openNegotiation(id){
       <div class="row"><input type="range" id="negWage" min="${round2(askW*0.6)}" max="${round2(askW*1.4)}" step="0.01" value="${askW}" oninput="syncNeg()"><span class="rngval" id="negWageV">${eur(askW)}</span></div></div>
     <div class="field"><label>合同年限</label>
       <div class="row"><input type="range" id="negYears" min="1" max="5" step="1" value="3" oninput="syncNeg()"><span class="rngval" id="negYearsV">3 年</span></div></div>
+    ${free?'':`<div class="field"><label>付款方式（分期可缓解现金流，余款含 8% 附加费）</label>
+      <div class="row" style="gap:6px"><button class="btn sm" id="planBtn0" onclick="setNegPlan(0)">一次性</button><button class="btn sm ghost" id="planBtn2" onclick="setNegPlan(2)">分 2 季</button><button class="btn sm ghost" id="planBtn3" onclick="setNegPlan(3)">分 3 季</button></div></div>`}
     <div class="negbox">
       <div class="l"><span>经纪人佣金 (转会费 8%)</span><b id="negAgent">${eur(round1(ask*0.08))}</b></div>
-      <div class="l"><span>即时总支出 (转会费+佣金)</span><b id="negTotal" style="color:var(--gold)">${eur(round1(ask*1.08))}</b></div>
+      <div class="l"><span>即时支出</span><b id="negTotal" style="color:var(--gold)">${eur(round1(ask*1.08))}</b></div>
+      <div class="l" id="negPlanInfoRow" style="display:none"><span>分期余款</span><b id="negPlanInfo"></b></div>
       <div class="l"><span>你的现金</span><b>${eur(G.cash)}</b></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:14px">
@@ -1211,23 +1243,24 @@ function syncNeg(){
   $("#negWageV").textContent=eur(wage);
   $("#negYearsV").textContent=years+" 年";
   $("#negAgent").textContent=eur(round1(fee*0.08));
-  $("#negTotal").textContent=eur(round1(fee*1.08));
+  $("#negTotal").textContent=eur(planUpfront(fee));
+  const row=$("#negPlanInfoRow"), info=$("#negPlanInfo");
+  if(row&&info){ if(negPlan>0){ const deferred=round1(fee*0.6*1.08); row.style.display=""; info.textContent=`${eur(deferred)}（每季 ${eur(round1(deferred/negPlan))} × ${negPlan}）`; } else row.style.display="none"; }
 }
 function submitOffer(){
   const p=dealPlayer(); if(!p) return;
   const fee=+$("#negFee").value, wage=+$("#negWage").value, years=+$("#negYears").value;
   const {ask,askW}=pendingDeal;
-  const total=round1(fee*1.08);
-  if(total>G.cash){ toast("现金不足支付转会费+佣金"); return; }
+  if(planUpfront(fee)>G.cash){ toast("现金不足支付首付/佣金"); return; }
   const feeLow = fee<ask*0.85, wageLow = wage<askW*0.92;
   if(fee<ask*0.7 || wage<askW*0.8){ // 太低 → 破裂
     closeOverlay(); toast("报价过低，谈判破裂 ❌");
     pushNews(`❌ 与 <b>${p.name}</b> 的谈判破裂（报价过低）。`,"bad"); return;
   }
-  if(!feeLow && !wageLow){ completeSigning(p,fee,wage,years); return; }
+  if(!feeLow && !wageLow){ completeSigning(p,fee,wage,years,negPlan); return; }
   // 还价
   const cFee=round1(Math.max(fee, ask*0.96)), cWage=round2(Math.max(wage, askW));
-  pendingDeal={...pendingDeal, cFee, cWage, years};
+  pendingDeal={...pendingDeal, cFee, cWage, years, plan:negPlan};
   const cTotal=round1(cFee*1.08);
   const afford=cTotal<=G.cash;
   showOverlay(`
@@ -1246,26 +1279,28 @@ function submitOffer(){
 }
 function acceptCounter(){
   const p=dealPlayer(); if(!p) return;
-  completeSigning(p, pendingDeal.cFee, pendingDeal.cWage, pendingDeal.years);
+  completeSigning(p, pendingDeal.cFee, pendingDeal.cWage, pendingDeal.years, pendingDeal.plan||0);
 }
-function completeSigning(p,fee,wage,years){
-  const total=round1(fee*1.08);
-  if(total>G.cash){ toast("现金不足"); return; }
+function completeSigning(p,fee,wage,years,plan){
+  plan=plan||0;
+  const upfront=planUpfront(fee);
+  if(upfront>G.cash){ toast("现金不足支付首付/佣金"); return; }
   if(pendingDeal.fromRival){
     const club=G.table.find(t=>t.name===pendingDeal.fromRival);
     const idx=club&&club.squad?club.squad.findIndex(x=>x.id===p.id):-1;
     if(idx<0){ toast("该球员已不在该队"); closeOverlay(); return; }
     club.squad.splice(idx,1);
-    G.cash=round1(G.cash-total);
+    G.cash=round1(G.cash-upfront);
     club.str=round1(clubStr(club));
-    pushNews(`✍️ <b>${G.club}</b> 从 <b>${pendingDeal.fromRival}</b> 挖来 <b>${p.name}</b>（${eur(fee)}，周薪 ${eur(wage)}/轮，${years}年）。`,"good");
+    pushNews(`✍️ <b>${G.club}</b> 从 <b>${pendingDeal.fromRival}</b> 挖来 <b>${p.name}</b>（${eur(fee)}${plan>0?`，分${plan}季`:''}，周薪 ${eur(wage)}/轮，${years}年）。`,"good");
   } else {
     const i=G.market.findIndex(x=>x.id===p.id); if(i<0){ toast("该球员已不在市场"); closeOverlay(); return; }
-    G.cash=round1(G.cash-total);
+    G.cash=round1(G.cash-upfront);
     G.market.splice(i,1);
     G.market.push(mkFreeMaybe(makePlayer(pick(POS), Math.random()<0.2?rnd(3,8):0)));
-    pushNews(`✍️ <b>${G.club}</b> 签下 <b>${p.name}</b>（${eur(fee)}，周薪 ${eur(wage)}/轮，${years}年）。`,"good");
+    pushNews(`✍️ <b>${G.club}</b> 签下 <b>${p.name}</b>（${eur(fee)}${plan>0?`，分${plan}季`:''}，周薪 ${eur(wage)}/轮，${years}年）。`,"good");
   }
+  if(plan>0){ const deferred=round1(fee*0.6*1.08); if(!Array.isArray(G.installments)) G.installments=[]; G.installments.push({name:p.name, perSeason:round1(deferred/plan), seasonsLeft:plan}); pushNews(`💳 分期：余款 ${eur(deferred)} 分 ${plan} 季支付（每季 ${eur(round1(deferred/plan))}）。`,"match"); }
   p.owned=true; p.free=false; p.buyPrice=fee; p.wage=round2(wage); p.contractYears=years; p.starter=false;
   p.joinedSeason=G.season; p.clubApps=0; p.clubGls=0; p.clubAst=0; p._hof=false;
   noteSigning(p,fee);
@@ -1274,6 +1309,47 @@ function completeSigning(p,fee,wage,years){
   toast(`签下 ${p.name}！转会费 ${eur(fee)} + 佣金，周薪 ${eur(wage)}`);
   save(); render();
 }
+function signByClause(id){
+  const fromRival=clubOf(id);
+  const p=fromRival? fromRival.squad.find(x=>x.id===id) : G.market.find(x=>x.id===id);
+  if(!p||!p.releaseClause) return;
+  if(squadCount()>=SQUAD_MAX){ toast(`阵容已满（含租出，上限 ${SQUAD_MAX} 人）`); return; }
+  if(p.releaseClause>G.cash){ toast("现金不足支付解约金"); return; }
+  const wage=wageDemand(p.ovr), years=rint(3,4), clause=p.releaseClause;
+  if(fromRival){ const idx=fromRival.squad.findIndex(x=>x.id===id); if(idx<0){toast("该球员已不在该队");closeOverlay();return;} fromRival.squad.splice(idx,1); fromRival.str=round1(clubStr(fromRival)); }
+  else { const i=G.market.findIndex(x=>x.id===id); if(i<0){toast("该球员已不在市场");closeOverlay();return;} G.market.splice(i,1); G.market.push(mkFreeMaybe(makePlayer(pick(POS), Math.random()<0.2?rnd(3,8):0))); }
+  G.cash=round1(G.cash-clause);
+  p.owned=true; p.free=false; p.buyPrice=clause; p.wage=round2(wage); p.contractYears=years; p.starter=false;
+  p.joinedSeason=G.season; p.clubApps=0; p.clubGls=0; p.clubAst=0; p._hof=false; noteSigning(p,clause); p.releaseClause=null;
+  G.squad.push(p); closeOverlay();
+  toast(`支付解约金签下 ${p.name}！`);
+  pushNews(`💸 触发解约金签下 <b>${p.name}</b>（${eur(clause)}，免谈判）。`,"good");
+  save(); render();
+}
+function openClause(id){
+  const p=G.squad.find(x=>x.id===id); if(!p) return;
+  const lo=round1(p.value*1.3), hi=round1(p.value*3.5);
+  G._clause={id, val: p.releaseClause? clamp(p.releaseClause,lo,hi) : round1(p.value*2)};
+  showOverlay(`<h2 style="text-align:center">🔓 解约金 · ${p.name}</h2>
+    <div class="hint" style="text-align:center;margin:-4px 0 8px">身价 ${eur(p.value)}。解约金越低，球员越有安全感（士气↑），但别队更可能低价触发挖走；越高越安全但球员无感。</div>
+    <div class="negbox"><div class="l"><span>解约金</span><b id="clVal"></b></div><div class="l"><span>球员态度</span><b id="clMood"></b></div></div>
+    <div class="field"><input type="range" min="${lo}" max="${hi}" step="0.5" value="${G._clause.val}" oninput="setClause(this.value)"></div>
+    <button class="btn big" style="width:100%" onclick="confirmClause()">确定设置</button>
+    ${p.releaseClause?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="clearClause(${id})">清除解约金</button>`:''}
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="G._clause=null;closeOverlay()">取消</button>`,true);
+  syncClause();
+}
+function setClause(v){ if(G._clause){ G._clause.val=round1(+v); syncClause(); } }
+function syncClause(){ const c=G._clause; if(!c) return; const p=G.squad.find(x=>x.id===c.id); if(!p) return; const ratio=c.val/Math.max(0.1,p.value);
+  const mood = ratio<=1.6?'<span style="color:var(--up)">很满意（士气↑↑，但易被挖）</span>': ratio<=2.2?'<span style="color:var(--gold)">较满意（士气↑）</span>':'<span class="hint">无感（条款偏高）</span>';
+  const set=(id,h)=>{const e=document.getElementById(id); if(e) e.innerHTML=h;}; set("clVal",eur(c.val)); set("clMood",mood);
+}
+function confirmClause(){ const c=G._clause; if(!c) return; const p=G.squad.find(x=>x.id===c.id); if(!p){ closeOverlay(); return; }
+  p.releaseClause=round1(c.val); const ratio=c.val/Math.max(0.1,p.value); const mb=ratio<=1.6?6:ratio<=2.2?3:1;
+  p.morale=clamp((p.morale==null?70:p.morale)+mb,0,100); G._clause=null; closeOverlay();
+  toast(`已设置 ${p.name} 解约金 ${eur(p.releaseClause)}`); pushNews(`🔓 为 <b>${p.name}</b> 设置解约金 ${eur(p.releaseClause)}（士气 +${mb}）。`,"match"); save(); render();
+}
+function clearClause(id){ const p=G.squad.find(x=>x.id===id); if(p) p.releaseClause=null; G._clause=null; closeOverlay(); toast("已清除解约金"); save(); render(); }
 function sell(id){
   const i=G.squad.findIndex(p=>p.id===id); if(i<0) return;
   if(G.squad.length<=11){ toast("阵容不能少于 11 人"); return; }
@@ -2207,6 +2283,7 @@ function viewBusiness(){
   <div class="panel"><h2>🏗️ 俱乐部设施</h2>${facilHTML}</div>
   <div class="panel"><h2>📜 执教生涯</h2><div class="negbox">${careerHTML}</div></div>
   <div class="panel"><h2>📈 执教邀请（挖角）</h2>${jobs}</div>
+  ${(G.installments&&G.installments.length)?`<div class="panel"><h2>💳 转会分期付款</h2><div class="negbox">${G.installments.map(it=>`<div class="l"><span>${it.name}</span><span>${eur(it.perSeason)}/季 · 剩 ${it.seasonsLeft} 季</span></div>`).join("")}<div class="l"><span><b>每季合计</b></span><b style="color:var(--down)">${eur(round1(G.installments.reduce((a,it)=>a+it.perSeason,0)))}</b></div></div></div>`:''}
   <div class="panel"><h2>🤝 当前赞助商</h2>${active}</div>
   <div class="panel"><h2>✍️ 可签约赞助 <span class="hint">（最多 3 个，赛季末刷新）</span></h2>${offers}</div>`;
 }
@@ -2759,6 +2836,7 @@ function playerModalHTML(p){
     <div class="l"><span>合同</span><b>${p.contractYears} 年${p.contractYears<=1?' ⚠️':''}</b></div>
     <div class="l"><span>士气</span><b>${moraleEmoji(p)} ${Math.round(p.morale==null?70:p.morale)}${p.wantOut?' · 要求转会':''}</b></div>
     <div class="l"><span>买入价</span><b>${eur(p.buyPrice||0)} ${fmtChg(p)}</b></div>
+    <div class="l"><span>解约金</span><b>${p.releaseClause?eur(p.releaseClause):'无'} <button class="btn sm ghost" style="margin-left:6px" onclick="closeOverlay();openClause(${p.id})">设置</button></b></div>
     ${G.training&&G.training.includes(p.id)?`<div class="l"><span>训练</span><b>🎓 训练中${p.learnPos?` · 学习 ${POS_CN[p.learnPos]||p.learnPos}`:''}</b></div>`:''}
   ` : '';
   const peak = (p.valHist&&p.valHist.length)? Math.max(...p.valHist, p.value) : p.value;
@@ -3041,6 +3119,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!Array.isArray(G.academy.prospects)) G.academy.prospects=[];
   if(G.rep==null) G.rep=50;
   if(!Array.isArray(G.sponsorOffers)) G.sponsorOffers=[];
+  if(!Array.isArray(G.installments)) G.installments=[];
   ensureSponsorSlots();   // 迁移旧赞助数组→分类槽位
   if(!Array.isArray(G.loans)) G.loans=[];
   if(!Array.isArray(G.jobOffers)) G.jobOffers=[];
