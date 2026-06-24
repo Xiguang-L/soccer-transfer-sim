@@ -464,7 +464,7 @@ function makePlayer(pos, opt){
   const traits=genTraits(POS_LINE[posD], ovr, potential, age);
   const fv = fairValue(ovr,age)*FORMS[formIdx].mult;
   return {
-    id:_id++, name, nat, pos:posD, pos2, traits, age, ovr, potential,
+    id:_id++, name, nat, pos:posD, pos2, traits, morale:70, age, ovr, potential,
     potEst: clamp(potential+rint(-7,7), ovr, 99), // 未侦察时的模糊估计
     scouted:false,
     formIdx, injured:0, apps:0,
@@ -521,6 +521,7 @@ function newGame(world, clubIdx, budget){
     rep:50, sponsors:[], sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
     conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
     cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true,
+    board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
     lastWageBill:0, finished:false,
   };
   buildSchedules();
@@ -595,7 +596,7 @@ function teamRatings(){
     const id=G.lineup?G.lineup[i]:null; if(id==null) return;
     const p=G.squad.find(x=>x.id===id); if(!p||p.injured) return;
     cnt++; if(s.pos==="GK") hasGK=true;
-    eff.push({role:POS_LINE[s.pos], x:s.x, val:p.ovr*FORMS[p.formIdx].mult*posEff(p,s.pos)});
+    eff.push({role:POS_LINE[s.pos], x:s.x, val:p.ovr*FORMS[p.formIdx].mult*posEff(p,s.pos)*moraleFac(p)});
     if(Array.isArray(p.traits)){ // 特质对球队属性的影响
       if(hasTrait(p,"poacher")) atB+=0.012; if(hasTrait(p,"playmaker")) atB+=0.02; if(hasTrait(p,"winger")) atB+=0.008; if(hasTrait(p,"aerial")) atB+=0.006;
       if(hasTrait(p,"rock")) deB+=0.02; if(hasTrait(p,"bigGame")){ atB+=0.006; deB+=0.006; } if(hasTrait(p,"leader")) ovB+=0.008;
@@ -824,6 +825,26 @@ function resolveLeagueMatch(mg,og,ctx){
   pushNews(`<b>${G.club} ${mg}-${og} ${opp.name}</b> · ${resTxt}，奖金 +${eur(prize)}；工资支出 -${eur(wb)}`,"match");
   if(G.cash<0) pushNews(`⚠️ 现金为负（${eur(G.cash)}）！工资压力过大，尽快卖人回血。`,"bad");
 
+  // 士气：随胜负 / 出场时间 / 处境浮动（高于全队水准却坐板凳的球员会不满）
+  const myOvr=teamRatings().ovr;
+  G.squad.forEach(p=>{
+    let dm = res==="W"?2 : res==="L"?-1.6 : 0.3;
+    if(p.starter) dm+=1.2; else dm += (p.ovr>=myOvr-1? -2.2 : -0.4);
+    if(p.wantOut) dm-=1;
+    dm += G.board>=70?0.4 : (G.board<=30?-0.6:0);
+    p.morale=clamp((p.morale==null?70:p.morale)+dm,0,100);
+    if(p.morale<24 && !p.wantOut && Math.random()<0.25){ p.wantOut=true; pushNews(`😡 <b>${p.name}</b> 对处境强烈不满，要求转会！`,"bad"); }
+    if(p.morale>55 && p.wantOut) p.wantOut=false;
+  });
+  // 董事会信心：胜负 + 排名是否达预期
+  const rk=myRank();
+  let bd = res==="W"?3 : res==="D"?0.6 : -3;
+  if(res==="W" && clubStr(opp)>myOvr) bd+=1.5;
+  if(res==="L" && clubStr(opp)<myOvr-3) bd-=1.5;
+  if(rk<=G.goalRank) bd+=0.6; else if(rk>G.goalRank+2) bd-=0.9;
+  updateBoard(bd);
+  if(G.board<=18 && G.board>10 && !G.boardWarned){ G.boardWarned=true; pushNews(`⚠️ 董事会发出<b>最后通牒</b>：再不改善成绩，赛季结束你将被解雇！`,"bad"); }
+
   G.round++;
   const _mid=Math.ceil(G.totalRounds/2);
   if(G.round-1===_mid && G.academy){ generateIntake(); pushNews(`🌱 年中青训营开营，迎来一批新苗子（学院 Lv.${G.academy.level}）。`,"good"); }
@@ -946,6 +967,8 @@ function endSeason(){
   const bonus=round1((rank===1?40:rank===2?21:rank===3?12:rank<=5?5:1.5)*(myDiv()===0?1.55:0.9)); // 冠军奖金更高，按联赛级别加权
   const transferBudget=round1((9-Math.min(rank,8))*rnd(3,6) + G.rep*0.2);
   G.rep=clamp(G.rep + (rank===1?10:rank<=3?6:rank<=G.goalRank?3:-2), 0, 100);
+  updateBoard(rank===1?22: rank<=3?13: (rank<=G.goalRank?9: (rank>G.goalRank+3?-26:-13))); // 赛季考核：董事会信心大幅波动
+  G.seasonsAtClub=(G.seasonsAtClub||1)+1;
   G.cash=round1(G.cash+bonus+transferBudget);
   pushNews(`💰 下赛季董事会拨款：联赛奖金 ${eur(bonus)} + 转会预算 ${eur(transferBudget)}（当前声望 ${Math.round(G.rep)}）。`,"good");
   const metGoal = rank<=G.goalRank;
@@ -1034,7 +1057,8 @@ function endSeason(){
   if(G.wcc && G.wcc.in) startWCC();                                     // 世俱杯自动加入当季赛程
   if(G.national && G.national.nation){ G.national.comp=null; startStage(G.national.nextStage||"contQual"); } // 国家队赛事自动开始
   G.leagueViewDiv=myDiv();
-  showSeasonModal(rank,bonus);
+  if(G.board<=10) getSacked();           // 赛季考核不过关 → 解雇（须接手新球队继续生涯）
+  else showSeasonModal(rank,bonus);
 }
 function cmpTable(a,b){ return b.pts-a.pts || (b.GF-b.GA)-(a.GF-a.GA) || b.GF-a.GF; }
 
@@ -1286,7 +1310,7 @@ function playerCard(p,mode){
       <span class="ovr">${p.ovr}</span>
     </div>
     <div class="meta">
-      <span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} ${(p.pos2&&p.pos2.length)?`<span class="ctr-tag" style="background:#23304a;color:#9fb6d8">兼 ${p.pos2.join('/')}</span>`:''} ${wt} ${inj} ${(p.free&&!p.owned)?'<span class="ctr-tag" style="background:#13324a;color:#7fd0ff">🆓自由身</span>':''}
+      <span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} ${mode==="squad"?moraleEmoji(p):''} ${(mode==="squad"&&p.wantOut)?'<span class="ctr-tag" style="background:#3a2030;color:#ff9bb0">要求转会</span>':''} ${(p.pos2&&p.pos2.length)?`<span class="ctr-tag" style="background:#23304a;color:#9fb6d8">兼 ${p.pos2.join('/')}</span>`:''} ${wt} ${inj} ${(p.free&&!p.owned)?'<span class="ctr-tag" style="background:#13324a;color:#7fd0ff">🆓自由身</span>':''}
       <span class="spacer" style="flex:1"></span>
       <span class="val">${eur(p.value)}</span>
     </div>
@@ -1840,20 +1864,49 @@ function viewBusiness(){
   const jobs=(G.jobOffers||[]).map(o=>`<div class="negbox"><div class="l"><span>🏛️ <b>${o.club}</b>${o.real?` <span class="real">(${o.real})</span>`:""} 想聘请你为主帅（实力 ${o.str}）</span></div><div style="display:flex;gap:6px;margin-top:8px"><button class="btn sm" onclick="acceptJob('${o.club}')">接受执教</button><button class="btn sm ghost" onclick="declineJob('${o.club}')">婉拒</button></div></div>`).join("")||`<div class="hint">暂无邀请。带队成绩越好、声望越高，越容易被大俱乐部挖角。</div>`;
   const active=(G.sponsors||[]).map(s=>`<div class="negbox"><div class="l"><span>💼 <b>${s.name}</b></span><span>+${eur(s.per)}/轮 · 剩 ${s.seasonsLeft} 季</span></div></div>`).join("")||`<div class="hint">暂无赞助商。</div>`;
   const offers=(G.sponsorOffers||[]).map((o,i)=>`<div class="negbox"><div class="l"><span>💼 <b>${o.name}</b></span><span>签约金 ${eur(o.signOn)} · +${eur(o.per)}/轮 · ${o.seasons}季</span></div><div style="margin-top:8px"><button class="btn sm" onclick="signSponsor(${i})">签约</button></div></div>`).join("")||`<div class="hint">暂无可签约赞助（每赛季刷新）。</div>`;
+  const bs=boardStatus(); const b=Math.round(G.board==null?60:G.board);
+  const careerHTML=(G.career||[]).map((c,i)=>{ const to=(G.career[i+1]?G.career[i+1].fromSeason-1:G.season); return `<div class="l"><span>🏛️ ${c.club}</span><span class="hint">S${c.fromSeason}–S${to}</span></div>`; }).join("")||`<div class="hint">—</div>`;
+  const unhappy=G.squad.filter(p=>(p.morale==null?70:p.morale)<35).sort((a,b)=>(a.morale||0)-(b.morale||0));
+  const moraleHTML=unhappy.length? unhappy.slice(0,6).map(p=>`<div class="l"><span>${moraleEmoji(p)} ${p.name}${p.wantOut?' <span class="ctr-tag" style="background:#3a2030;color:#ff9bb0">要求转会</span>':''}</span><span class="hint">士气 ${Math.round(p.morale)} · 多出场/胜利可回升</span></div>`).join("") : `<div class="hint">更衣室氛围良好，无人闹情绪 👍</div>`;
   return `
-  <div class="panel"><h2>💼 经营</h2>
+  <div class="panel"><h2>🏛️ 帅位 / 董事会</h2>
     <div class="squadsum">
+      <div class="ring"><span class="num" style="color:${bs.c}">${b}</span><span class="lbl">董事会信心</span></div>
+      <div class="ring"><span class="num" style="font-size:14px;color:${bs.c}">${bs.t}</span><span class="lbl">评价</span></div>
+      <div class="ring"><span class="num">${G.seasonsAtClub||1}</span><span class="lbl">执教赛季</span></div>
       <div class="ring"><span class="num">${Math.round(G.rep||50)}</span><span class="lbl">声望</span></div>
-      <div class="ring"><span class="num">${eur(sponsorIncome())}</span><span class="lbl">赞助/轮</span></div>
-      <div class="ring"><span class="num">${(G.sponsors||[]).length}/3</span><span class="lbl">赞助商</span></div>
     </div>
-    <div class="hint">声望来自联赛战绩与国家队成绩，影响挖角邀请与赞助档次。赞助每轮带来现金收入。</div>
+    <div style="height:8px;border-radius:4px;background:#2a2a2a;overflow:hidden;display:flex;margin:6px 2px"><i style="display:block;height:100%;width:${b}%;background:${bs.c}"></i></div>
+    <div class="hint">本赛季目标：联赛前 <b>${G.goalRank}</b> 名。赢球、达成排名预期会提升信心；连败、低于预期会下降。${G.board<=20?'<b style="color:var(--down)"> 信心告急——赛季末若仍过低将被解雇！</b>':''} 信心高 + 声望高 → 更易被豪门挖角。</div>
   </div>
+  <div class="panel"><h2>🧑‍🤝‍🧑 更衣室士气</h2><div class="negbox">${moraleHTML}</div>
+    <div class="hint" style="margin-top:6px">不满的球员（多为高水平却长期坐板凳者）状态会下滑，甚至要求转会。给他们出场机会或卖掉以稳定更衣室。</div>
+  </div>
+  <div class="panel"><h2>📜 执教生涯</h2><div class="negbox">${careerHTML}</div></div>
   <div class="panel"><h2>📈 执教邀请（挖角）</h2>${jobs}</div>
   <div class="panel"><h2>🤝 当前赞助商</h2>${active}</div>
   <div class="panel"><h2>✍️ 可签约赞助 <span class="hint">（最多 3 个，赛季末刷新）</span></h2>${offers}</div>`;
 }
 // ---------- 挖角 / 换帅 ----------
+// ---------- 士气 / 董事会信心 / 生涯 ----------
+function moraleFac(p){ const m=p.morale==null?70:p.morale; return m>=82?1.03 : m>=58?1.0 : m>=38?0.985 : m>=22?0.965 : 0.94; }
+function moraleEmoji(p){ const m=p.morale==null?70:p.morale; const e=m>=82?"😃":m>=60?"🙂":m>=40?"😐":m>=22?"😟":"😡"; return `<span title="士气 ${Math.round(m)}${p.wantOut?" · 要求转会":""}">${e}</span>`; }
+function boardStatus(){ const b=G.board==null?60:G.board; return b>=80?{t:"稳如泰山",c:"var(--up)"}:b>=55?{t:"受到信任",c:"var(--up)"}:b>=35?{t:"中规中矩",c:"var(--gold)"}:b>=18?{t:"如坐针毡",c:"#e3c34a"}:{t:"岌岌可危",c:"var(--down)"}; }
+function updateBoard(d){ G.board=clamp((G.board==null?60:G.board)+d,0,100); if(G.board>35) G.boardWarned=false; }
+function sackOffers(){
+  const myOvr=teamRatings().ovr;
+  let pool=rivalClubs().filter(c=>clubStr(c)<=myOvr+2).sort((a,b)=>clubStr(b)-clubStr(a));
+  if(!pool.length) pool=rivalClubs().slice().sort((a,b)=>clubStr(a)-clubStr(b));
+  return pool.slice(0,3).map(c=>({club:c.name, real:c.real, str:Math.round(clubStr(c))}));
+}
+function getSacked(){
+  pushNews(`🚪 <b>你被 ${G.club} 解雇了！</b>董事会失去耐心。`,"bad");
+  const offers=sackOffers(); G.jobOffers=offers;
+  showOverlay(`<h2 style="text-align:center;color:var(--down)">⚠️ 你被解雇了</h2>
+    <p style="text-align:center">${G.club} 董事会对成绩失去耐心，解除了你的帅位。</p>
+    <p style="text-align:center">但执教生涯仍将继续——下列球队愿意聘请你：</p>
+    ${offers.map(o=>`<div class="negbox"><div class="l"><span>🏛️ <b>${o.club}</b>${o.real?` <span class="real">(${o.real})</span>`:""}（实力 ${o.str}）</span><button class="btn sm" onclick="acceptJob('${o.club}')">接手</button></div></div>`).join("")||'<div class="hint">暂无球队邀请……</div>'}`,true);
+}
 function genJobOffers(rank){
   G.jobOffers=[];
   if(rank<=3 || (G.rep||50)>=65){
@@ -1878,9 +1931,12 @@ function acceptJob(clubName){
   G.table[ri]={name:oldName, real:null, str:0, squad:oldSquad, tactic:pick(TACTIC_KEYS), country:oldCountry, conf:oldConf, div:oldDiv, P:R.P,W:R.W,D:R.D,L:R.L,GF:R.GF,GA:R.GA,pts:R.pts, you:false};
   G.training=[]; G.loans=[]; G.offers=[]; G.jobOffers=[]; G.lineup=[]; autoLineup();
   if(G.conti) G.conti.comp=null;
-  buildSchedules(); G.leagueViewDiv=myDiv(); G.leagueViewCountry=G.country; G.rivalViewCountry=G.country;
+  buildSchedules(); startCup(); G.midweekDone=false; G.leagueViewDiv=myDiv(); G.leagueViewCountry=G.country; G.rivalViewCountry=G.country;
   G.rep=clamp((G.rep||50)+5,0,100);
+  G.board=58; G.boardWarned=false; G.seasonsAtClub=1;                    // 新帅位：董事会信心重置
+  if(!Array.isArray(G.career)) G.career=[]; G.career.push({club:G.club, fromSeason:G.season});
   G.table.forEach(t=>{ if(!t.you) t.str=round1(clubStr(t)); });
+  closeOverlay();
   toast(`你已成为 ${G.club} 的主帅！`);
   pushNews(`🎉 你接受邀请，正式执教 <b>${G.club}</b>！原俱乐部 ${oldName} 另寻主帅。`,"good");
   save(); render();
@@ -2579,6 +2635,10 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!Array.isArray(G.staffMarket) || !G.staffMarket.length) refreshStaffMarket();
   if(G.liveMatch===undefined) G.liveMatch=true;
   if(G.autoSub===undefined) G.autoSub=true;
+  if(G.board==null) G.board=62;
+  if(G.boardWarned==null) G.boardWarned=false;
+  if(G.seasonsAtClub==null) G.seasonsAtClub=1;
+  if(!Array.isArray(G.career)) G.career=[{club:G.club, fromSeason:Math.max(1,(G.season||1)-(G.seasonsAtClub||1)+1)}];
   if(G.goalRank==null) G.goalRank=5;
   if(!G.archetype) G.archetype="mid";
   rivalClubs().forEach(c=>{ if(!c.tactic) c.tactic=pick(TACTIC_KEYS); if(c.squad){ c.squad.forEach(p=>p.free=false); c.str=round1(clubStr(c)); } });
@@ -2613,7 +2673,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.rivalViewConf==null) G.rivalViewConf=G.conf;
   if(G.leagueViewDiv==null) G.leagueViewDiv=myDiv();
   // 迁移：老存档球员是大类位置(GK/DF/MF/FW)，转成具体位置 + 初始化兼职位置
-  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); };
+  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); if(p.morale==null) p.morale=70; };
   allPlayers().forEach(fixPos);
   if(G.academy && Array.isArray(G.academy.prospects)) G.academy.prospects.forEach(fixPos);
   if(Array.isArray(G.loans)) G.loans.forEach(o=>fixPos(o.p));
