@@ -663,8 +663,8 @@ function autoLineup(){
   const n=ss.length; if(!avail.length){ syncStarters(); return; }
   const m=Math.max(n, avail.length);                     // 不足 11 人时用虚拟列补齐
   const cost=[];
-  for(let i=0;i<n;i++){ const row=new Array(m).fill(0); for(let j=0;j<avail.length;j++){ const p=avail[j]; row[j]=-(p.ovr*FORMS[p.formIdx].mult*posEff(p,ss[i].pos)); } cost.push(row); }
-  const ans=hungarianAssign(cost);                       // 全局最优：最大化 Σ 评分×状态×位置熟练度
+  for(let i=0;i<n;i++){ const row=new Array(m).fill(0); for(let j=0;j<avail.length;j++){ const p=avail[j]; row[j]=-(p.ovr*posEff(p,ss[i].pos)*(1+(FORMS[p.formIdx].mult-1)*0.15)); } cost.push(row); } // 以能力×位置熟练度为主，状态仅作微弱加权（不会让 76 火热盖过 91 冰冷）
+  const ans=hungarianAssign(cost);                       // 全局最优：最大化 Σ 评分×位置熟练度(×微状态)
   for(let i=0;i<n;i++){ const j=ans[i]; if(j>=0 && j<avail.length) G.lineup[i]=avail[j].id; }
   syncStarters();
 }
