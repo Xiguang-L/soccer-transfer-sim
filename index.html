@@ -2334,21 +2334,24 @@ function pickScorer(){
 function liveMatch(cfg){
   LIVE={cfg, min:0, mg:0, og:0, feed:[], subs:0, maxSubs:5, myRed:0, oppRed:0, half:false, ended:false, speed:2, playing:false, ticker:null, menu:null, out:null, injured:null, willInjure:[], win:false};
   let el=document.getElementById("live"); if(el) el.remove();
-  el=document.createElement("div"); el.className="live"; el.id="live"; document.body.appendChild(el);
+  el=document.createElement("div"); el.className="live"; el.id="live";
+  el.innerHTML=`<div class="lv-top" id="lvTop"></div><div class="lv-bar" id="lvBar"></div><div class="lv-feed" id="lvFeed"></div><div class="lv-ctrl" id="lvCtrl"></div>`;
+  document.body.appendChild(el);
   pushFeed(0,`🟢 开球！${cfg.homeName||G.club} vs ${cfg.oppName}`,"big");
-  updateLiveUI(); liveResume();
+  paintLiveAll(); liveResume();
 }
 function pushFeed(m,txt,cls){ if(!LIVE) return; LIVE.feed.push({m,txt,cls:cls||""}); if(LIVE.feed.length>60) LIVE.feed.shift(); }
-function liveResume(){ if(!LIVE||LIVE.ended) return; LIVE.menu=null; LIVE.playing=true; updateLiveUI(); scheduleStep(); }
+function liveResume(){ if(!LIVE||LIVE.ended) return; LIVE.menu=null; LIVE.playing=true; paintLiveCtrl(); paintLiveTop(); scheduleStep(); }
+function liveTogglePause(){ if(!LIVE) return; if(LIVE.playing){ livePause(); paintLiveCtrl(); } else liveResume(); }
 function livePause(){ if(!LIVE) return; LIVE.playing=false; if(LIVE.ticker){ clearTimeout(LIVE.ticker); LIVE.ticker=null; } }
 function scheduleStep(){ if(!LIVE||!LIVE.playing) return; const d=LIVE.speed>=3?55:LIVE.speed===2?120:230; LIVE.ticker=setTimeout(liveStep,d); }
 function liveStep(){
   if(!LIVE||!LIVE.playing||LIVE.ended) return;
   LIVE.min++; simMinute();
-  if(LIVE.injured){ livePause(); LIVE.menu="injury"; updateLiveUI(); return; }
-  if(LIVE.min>=45 && !LIVE.half){ LIVE.half=true; livePause(); pushFeed(45,`⏸ 中场休息 — 比分 ${LIVE.mg}-${LIVE.og}`,"big"); LIVE.menu="half"; updateLiveUI(); return; }
+  if(LIVE.injured){ livePause(); LIVE.menu="injury"; paintLiveTop(); paintLiveFeed(); paintLiveCtrl(); return; }
+  if(LIVE.min>=45 && !LIVE.half){ LIVE.half=true; livePause(); pushFeed(45,`⏸ 中场休息 — 比分 ${LIVE.mg}-${LIVE.og}`,"big"); LIVE.menu="half"; paintLiveTop(); paintLiveFeed(); paintLiveCtrl(); return; }
   if(LIVE.min>=90){ liveEnd(); return; }
-  updateLiveUI(); scheduleStep();
+  paintLiveTop(); paintLiveFeed(); scheduleStep();
 }
 function simMinute(){
   const hn=LIVE.cfg.homeName||G.club;
@@ -2364,15 +2367,15 @@ function simMinute(){
     const cand=starters().filter(p=>!p._subOn); if(cand.length){ const v=pick(cand); LIVE.injured=v.id; pushFeed(LIVE.min,`🚑 <b>${lastName(v.name)}</b> 受伤倒地！`,"card"); }
   }
 }
-function liveSetSpeed(s){ if(!LIVE) return; LIVE.speed=s; updateLiveUI(); }
+function liveSetSpeed(s){ if(!LIVE) return; LIVE.speed=s; paintLiveCtrl(); if(LIVE.playing){ if(LIVE.ticker) clearTimeout(LIVE.ticker); scheduleStep(); } }
 function liveSkip(){ if(!LIVE) return; livePause(); LIVE.injured=null; while(LIVE.min<90){ LIVE.min++; simMinute(); LIVE.injured=null; } liveEnd(); }
-function liveOpenSub(presetOut){ if(!LIVE) return; livePause(); LIVE.menu="sub"; LIVE.out=presetOut||null; updateLiveUI(); }
-function liveOpenTactic(){ if(!LIVE) return; livePause(); LIVE.menu="tactic"; updateLiveUI(); }
-function livePickOut(id){ LIVE.out=id; updateLiveUI(); }
+function liveOpenSub(presetOut){ if(!LIVE) return; livePause(); LIVE.menu="sub"; LIVE.out=presetOut||null; paintLiveCtrl(); }
+function liveOpenTactic(){ if(!LIVE) return; livePause(); LIVE.menu="tactic"; paintLiveCtrl(); }
+function livePickOut(id){ LIVE.out=id; paintLiveCtrl(); }
 function liveDoSub(inId){
   if(!LIVE||LIVE.out==null) return;
   const outId=LIVE.out; const idx=G.lineup.indexOf(outId);
-  if(idx<0){ LIVE.out=null; updateLiveUI(); return; }
+  if(idx<0){ LIVE.out=null; paintLiveCtrl(); return; }
   G.lineup[idx]=inId;
   const op=G.squad.find(p=>p.id===outId), ip=G.squad.find(p=>p.id===inId);
   if(op) op.starter=false; if(ip){ ip.starter=true; ip._subOn=true; }
@@ -2394,7 +2397,7 @@ function liveEnd(){
   let mg=LIVE.mg, og=LIVE.og; LIVE.win=mg>og;
   if(LIVE.cfg.knockout && mg===og){ const me=LIVE.cfg.myStr?LIVE.cfg.myStr():70, op=LIVE.cfg.oppStr||70; LIVE.win=Math.random()<clamp(0.5+(me-op)/40,0.2,0.8); pushFeed(90,`🎯 点球大战 — ${LIVE.win?'你方获胜！':'惜败'}`,"big"); }
   pushFeed(90,`🔚 全场结束 ${mg}-${og}`,"big");
-  LIVE.menu="end"; updateLiveUI();
+  LIVE.menu="end"; paintLiveAll();
 }
 function liveConfirm(){
   if(!LIVE) return; const cfg=LIVE.cfg, mg=LIVE.mg, og=LIVE.og, win=LIVE.win;
@@ -2404,12 +2407,23 @@ function liveConfirm(){
   LIVE=null;
   cfg.onFinish(mg, og, win);
 }
-function updateLiveUI(){
-  const el=document.getElementById("live"); if(!el||!LIVE) return;
+// 性能/可点击性：比赛进行中每分钟只刷新比分/解说/势头条；控制条仅在状态变化时重绘，避免按钮被高频重建导致点击失效
+function paintLiveTop(){
+  const top=document.getElementById("lvTop"), bar=document.getElementById("lvBar"); if(!top||!LIVE) return;
   const cfg=LIVE.cfg; const x=cfg.getXG(); const tot=x.mxg+x.oxg||1; const myShare=Math.round(x.mxg/tot*100);
   const minTxt = LIVE.ended?"完场": LIVE.min>=90?"90'": (LIVE.half&&LIVE.menu==="half")?"中场": `${LIVE.min}'`;
-  const feed=[...LIVE.feed].reverse().map(e=>`<div class="lv-ev ${e.cls}"><span class="m">${e.m}'</span>${e.txt}</div>`).join("");
-  let ctrl="";
+  top.innerHTML=`<div class="lv-team">${cfg.homeName||G.club}${LIVE.myRed?` 🟥×${LIVE.myRed}`:''}</div>
+    <div style="text-align:center"><div class="lv-score">${LIVE.mg} - ${LIVE.og}</div><div class="lv-min">${minTxt} · ${cfg.comp}</div></div>
+    <div class="lv-team r">${cfg.oppName}${LIVE.oppRed?` 🟥×${LIVE.oppRed}`:''}</div>`;
+  if(bar) bar.innerHTML=`<i style="width:${myShare}%;background:var(--up)"></i><i style="width:${100-myShare}%;background:var(--down)"></i>`;
+}
+function paintLiveFeed(){
+  const fe=document.getElementById("lvFeed"); if(!fe||!LIVE) return;
+  fe.innerHTML=[...LIVE.feed].reverse().map(e=>`<div class="lv-ev ${e.cls}"><span class="m">${e.m}'</span>${e.txt}</div>`).join("");
+}
+function paintLiveCtrl(){
+  const ce=document.getElementById("lvCtrl"); if(!ce||!LIVE) return;
+  const cfg=LIVE.cfg; let ctrl="";
   if(LIVE.menu==="end"){
     const res=LIVE.win?(LIVE.mg>LIVE.og?"胜利 🎉":"点球胜出 🎯"):(LIVE.mg<LIVE.og?"失利 😞":(LIVE.mg===LIVE.og?"点球落败":"战平 🤝"));
     ctrl=`<div class="lv-note">${cfg.comp} · ${res}</div><button class="btn big" style="width:100%" onclick="liveConfirm()">继续 ▶</button>`;
@@ -2441,22 +2455,15 @@ function updateLiveUI(){
       ${cfg.allowTactic?`<button class="btn ghost" onclick="liveOpenTactic()">🎯 变阵</button>`:''}`;
   } else {
     const sp=[1,2,3].map(s=>`<button class="btn sm ${LIVE.speed===s?'':'ghost'}" onclick="liveSetSpeed(${s})">${s}×</button>`).join("");
-    ctrl=`${LIVE.playing?`<button class="btn sm ghost" onclick="livePause();updateLiveUI()">⏸</button>`:`<button class="btn sm" onclick="liveResume()">▶</button>`}
+    ctrl=`${LIVE.playing?`<button class="btn sm ghost" onclick="liveTogglePause()">⏸ 暂停</button>`:`<button class="btn sm" onclick="liveTogglePause()">▶ 继续</button>`}
       ${sp}
       ${cfg.allowSub?`<button class="btn sm ghost" onclick="liveOpenSub()">🔄 换人 ${LIVE.maxSubs-LIVE.subs}</button>`:''}
       ${cfg.allowTactic?`<button class="btn sm ghost" onclick="liveOpenTactic()">🎯 变阵</button>`:''}
       <button class="btn sm ghost" onclick="liveSkip()">⏭ 跳过</button>`;
   }
-  el.innerHTML=`
-    <div class="lv-top">
-      <div class="lv-team">${cfg.homeName||G.club}${LIVE.myRed?` 🟥×${LIVE.myRed}`:''}</div>
-      <div style="text-align:center"><div class="lv-score">${LIVE.mg} - ${LIVE.og}</div><div class="lv-min">${minTxt} · ${cfg.comp}</div></div>
-      <div class="lv-team r">${cfg.oppName}${LIVE.oppRed?` 🟥×${LIVE.oppRed}`:''}</div>
-    </div>
-    <div class="lv-bar"><i style="width:${myShare}%;background:var(--up)"></i><i style="width:${100-myShare}%;background:var(--down)"></i></div>
-    <div class="lv-feed">${feed}</div>
-    <div class="lv-ctrl">${ctrl}</div>`;
+  ce.innerHTML=ctrl;
 }
+function paintLiveAll(){ paintLiveTop(); paintLiveFeed(); paintLiveCtrl(); }
 function showMatchModal(opp,mg,og,res,prize,wb,tac){
   const txt=res==="W"?"胜利 🎉":res==="L"?"失利 😞":"平局 🤝";
   showOverlay(`<h2 style="text-align:center">比赛结束</h2>
