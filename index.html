@@ -2245,7 +2245,7 @@ function viewBusiness(){
   ensureSponsorSlots();
   const bzTxt=b=>Object.keys(b||{}).map(k=>`${SPONSOR_BONUS_CN[k]} +${eur(b[k])}`).join("、");
   const active=SPONSOR_TKEYS.map(t=>{ const s=G.sponsorSlots[t], T=SPONSOR_TYPES[t]; return `<div class="negbox"><div class="l"><span>${T.icon} <b>${T.name}</b>${s?` · ${s.brand}`:''}</span><span>${s?`+${eur(s.per)}/轮 · 剩 ${s.seasonsLeft} 季`:'<span class="hint">空缺</span>'}</span></div>${s&&bzTxt(s.bonus)?`<div class="hint" style="margin-top:4px">绩效：${bzTxt(s.bonus)}</div>`:''}</div>`; }).join("");
-  const offers=(G.sponsorOffers||[]).map((o,i)=>`<div class="negbox"><div class="l"><span>${SPONSOR_TYPES[o.type].icon} <b>${o.name}</b> <span class="hint">${SPONSOR_TYPES[o.type].name}</span></span><span>签约金 ${eur(o.signOn)} · +${eur(o.per)}/轮 · ${o.seasons}季</span></div>${bzTxt(o.bonus)?`<div class="hint" style="margin-top:4px">绩效：${bzTxt(o.bonus)}</div>`:''}<div style="margin-top:8px"><button class="btn sm ${G.sponsorSlots[o.type]?'ghost':''}" onclick="signSponsor(${i})">${G.sponsorSlots[o.type]?'该类型已签约':'签约'}</button></div></div>`).join("")||`<div class="hint">暂无可签约赞助（每赛季刷新；签满后该类型不再有报价）。</div>`;
+  const offers=(G.sponsorOffers||[]).map((o,i)=>{ const T=SPONSOR_TYPES[o.type]; if(!T) return ''; return `<div class="negbox"><div class="l"><span>${T.icon} <b>${o.name}</b> <span class="hint">${T.name}</span></span><span>签约金 ${eur(o.signOn)} · +${eur(o.per)}/轮 · ${o.seasons}季</span></div>${bzTxt(o.bonus)?`<div class="hint" style="margin-top:4px">绩效：${bzTxt(o.bonus)}</div>`:''}<div style="margin-top:8px"><button class="btn sm ${G.sponsorSlots[o.type]?'ghost':''}" onclick="signSponsor(${i})">${G.sponsorSlots[o.type]?'该类型已签约':'签约'}</button></div></div>`; }).join("")||`<div class="hint">暂无可签约赞助（每赛季刷新；签满后该类型不再有报价）。</div>`;
   const bs=boardStatus(); const b=Math.round(G.board==null?60:G.board);
   const careerHTML=(G.career||[]).map((c,i)=>{ const to=(G.career[i+1]?G.career[i+1].fromSeason-1:G.season); return `<div class="l"><span>🏛️ ${c.club}</span><span class="hint">S${c.fromSeason}–S${to}</span></div>`; }).join("")||`<div class="hint">—</div>`;
   const unhappy=G.squad.filter(p=>(p.morale==null?70:p.morale)<35).sort((a,b)=>(a.morale||0)-(b.morale||0));
@@ -3119,6 +3119,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!Array.isArray(G.academy.prospects)) G.academy.prospects=[];
   if(G.rep==null) G.rep=50;
   if(!Array.isArray(G.sponsorOffers)) G.sponsorOffers=[];
+  G.sponsorOffers=G.sponsorOffers.filter(o=>o&&SPONSOR_TYPES[o.type]);  // 清理旧版无类型赞助报价（否则经营页渲染报错）
   if(!Array.isArray(G.installments)) G.installments=[];
   ensureSponsorSlots();   // 迁移旧赞助数组→分类槽位
   if(!Array.isArray(G.loans)) G.loans=[];
