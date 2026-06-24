@@ -136,6 +136,10 @@
   .live .lv-pc{padding:7px 9px; border-radius:8px; background:#0e2a1b; border:1px solid var(--line); cursor:pointer; font-size:12px}
   .live .lv-pc.sel{border-color:var(--accent); background:#12324a}
   .live .lv-pc.hd{grid-column:1/-1; background:transparent; border:none; color:var(--dim); padding:2px 4px; cursor:default; font-size:12px}
+  .live .stam{display:inline-block; height:5px; width:42px; border-radius:3px; background:#2a2a2a; overflow:hidden; vertical-align:middle; margin-left:4px}
+  .live .stam>i{display:block; height:100%}
+  .trait{display:inline-block; font-size:12px; line-height:1; padding:1px 2px; border-radius:5px; background:#1c2c3f; margin-right:1px; cursor:default}
+  .trait.neg{background:#3a2030}
   .field{margin:12px 0; text-align:left}
   .field label{display:block; font-size:13px; color:var(--dim); margin-bottom:5px}
   .field .row{display:flex; align-items:center; gap:10px}
@@ -249,6 +253,33 @@ const POS_ALL = Object.keys(POS_CN);
 const REL_POS = {CB:["LB","RB","DM"], LB:["RB","LM","CB"], RB:["LB","RM","CB"], DM:["CM","CB"], CM:["DM","AM","LM","RM"], AM:["CM","LM","RM","ST"], LM:["RM","LW","CM"], RM:["LM","RW","CM"], ST:["AM","LW","RW"], LW:["RW","ST","LM"], RW:["LW","ST","RM"], GK:[]};
 function detailedPos(x){ return POS_LINE[x] ? x : pick(LINE_POS[x]||["CM"]); }   // 大类→具体位置
 function posEff(p, sp){ if(p.pos===sp) return 1; if(p.pos2&&p.pos2.includes(sp)) return 0.92; if(POS_LINE[p.pos]===POS_LINE[sp]) return 0.84; return 0.66; } // 本职/兼职/同线/陌生
+// ---------- 球员特质 ----------
+const TRAITS = {
+  poacher:  {name:"单刀王",     icon:"🎯", line:["FW"]},
+  aerial:   {name:"头球高手",   icon:"🦅", line:["FW","DF"]},
+  setpiece: {name:"定位球大师", icon:"🥅", line:["FW","MF"]},
+  playmaker:{name:"节拍器",     icon:"🎼", line:["MF"]},
+  winger:   {name:"边路快马",   icon:"⚡", line:["MF","FW"]},
+  rock:     {name:"铁闸",       icon:"🧱", line:["DF"]},
+  leader:   {name:"更衣室领袖", icon:"👑", line:["GK","DF","MF","FW"]},
+  bigGame:  {name:"大心脏",     icon:"🔥", line:["GK","DF","MF","FW"]},
+  ironman:  {name:"铁人",       icon:"💪", line:["GK","DF","MF","FW"]},
+  prodigy:  {name:"天才",       icon:"🌟", line:["DF","MF","FW"]},
+  fragile:  {name:"玻璃人",     icon:"🧊", line:["GK","DF","MF","FW"], neg:true},
+};
+const TRAIT_KEYS=Object.keys(TRAITS);
+function genTraits(line, ovr, potential, age){
+  const out=[];
+  const pool=TRAIT_KEYS.filter(k=>!TRAITS[k].neg && k!=="prodigy" && TRAITS[k].line.includes(line));
+  const chance=(ovr>=83?0.6:ovr>=76?0.42:ovr>=69?0.26:0.12);
+  if(pool.length && Math.random()<chance) out.push(pick(pool));
+  if(pool.length>1 && Math.random()<chance*0.35){ const t=pick(pool); if(!out.includes(t)) out.push(t); }
+  if(age<=20 && (potential-ovr)>=12 && line!=="GK" && Math.random()<0.4) out.push("prodigy");
+  if(Math.random()<0.06) out.push("fragile");
+  return out;
+}
+function hasTrait(p,t){ return p && Array.isArray(p.traits) && p.traits.includes(t); }
+function traitBadges(p){ if(!p||!Array.isArray(p.traits)||!p.traits.length) return ""; return p.traits.map(t=>{ const T=TRAITS[t]; return T?`<span class="trait${T.neg?' neg':''}" title="${T.name}">${T.icon}</span>`:""; }).join(""); }
 const FORMS = [
   {name:"冰冷", mult:0.86, color:"#5b7fb5"},
   {name:"低迷", mult:0.94, color:"#7a8fa0"},
@@ -430,9 +461,10 @@ function makePlayer(pos, opt){
   const posD = detailedPos(pos);
   const pos2=[];
   if(posD!=="GK"){ const rel=REL_POS[posD]||[]; const n=Math.random()<0.45?1:(Math.random()<0.18?2:0); for(let i=0;i<n && rel.length;i++){ const r=pick(rel); if(r!==posD && !pos2.includes(r)) pos2.push(r); } }
+  const traits=genTraits(POS_LINE[posD], ovr, potential, age);
   const fv = fairValue(ovr,age)*FORMS[formIdx].mult;
   return {
-    id:_id++, name, nat, pos:posD, pos2, age, ovr, potential,
+    id:_id++, name, nat, pos:posD, pos2, traits, age, ovr, potential,
     potEst: clamp(potential+rint(-7,7), ovr, 99), // 未侦察时的模糊估计
     scouted:false,
     formIdx, injured:0, apps:0,
@@ -488,7 +520,7 @@ function newGame(world, clubIdx, budget){
     offers:[], academy:{level:1, prospects:[], targetNat:null},
     rep:50, sponsors:[], sponsorOffers:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
     conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
-    cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true,
+    cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true,
     lastWageBill:0, finished:false,
   };
   buildSchedules();
@@ -558,18 +590,22 @@ function sanitizeLineup(){
 }
 function starters(){ return G.squad.filter(p=>p.starter && !p.injured); }
 function teamRatings(){
-  const ss=slots(); const eff=[]; let cnt=0, hasGK=false;
+  const ss=slots(); const eff=[]; let cnt=0, hasGK=false; let atB=0, deB=0, ovB=0;
   ss.forEach((s,i)=>{
     const id=G.lineup?G.lineup[i]:null; if(id==null) return;
     const p=G.squad.find(x=>x.id===id); if(!p||p.injured) return;
     cnt++; if(s.pos==="GK") hasGK=true;
     eff.push({role:POS_LINE[s.pos], x:s.x, val:p.ovr*FORMS[p.formIdx].mult*posEff(p,s.pos)});
+    if(Array.isArray(p.traits)){ // 特质对球队属性的影响
+      if(hasTrait(p,"poacher")) atB+=0.012; if(hasTrait(p,"playmaker")) atB+=0.02; if(hasTrait(p,"winger")) atB+=0.008; if(hasTrait(p,"aerial")) atB+=0.006;
+      if(hasTrait(p,"rock")) deB+=0.02; if(hasTrait(p,"bigGame")){ atB+=0.006; deB+=0.006; } if(hasTrait(p,"leader")) ovB+=0.008;
+    }
   });
   const mean=arr=>arr.length? arr.reduce((s,e)=>s+e.val,0)/arr.length:0;
   const avg=role=>mean(eff.filter(e=>e.role===role));
-  const hc=1+staffLevel("head")*0.004;                 // 主教练小幅提升整体临场（满级 +2%）
-  const att=(avg("FW")*0.6+avg("MF")*0.4)*hc;
-  const def=(avg("DF")*0.65+avg("GK")*0.35)*hc;
+  const hc=(1+staffLevel("head")*0.004)*(1+clamp(ovB,0,0.05)); // 主教练 + 领袖
+  const att=(avg("FW")*0.6+avg("MF")*0.4)*hc*(1+clamp(atB,0,0.12));
+  const def=(avg("DF")*0.65+avg("GK")*0.35)*hc*(1+clamp(deB,0,0.12));
   const ovr=(eff.length? eff.reduce((s,e)=>s+e.val,0)/eff.length : 0)*hc;
   const wideEff=mean(eff.filter(e=>(e.role==="FW"||e.role==="MF")&&(e.x<30||e.x>70)));
   const centralEff=mean(eff.filter(e=>e.role==="MF"&&e.x>=35&&e.x<=65));
@@ -810,7 +846,8 @@ function evolveMarket(){
     if(p.injured>0) p.injured--;
     if(p.owned && med && p.injured>0 && Math.random()<0.12*med) p.injured--;  // 队医加快康复
     if(Math.random()<0.45) p.formIdx=clamp(p.formIdx+(Math.random()<0.5?-1:1),0,4);
-    const injChance = p.owned ? 0.04*(1-0.13*med) : 0.04;                      // 队医降低受伤概率
+    let injChance = p.owned ? 0.04*(1-0.13*med) : 0.04;                        // 队医降低受伤概率
+    if(hasTrait(p,"fragile")) injChance*=1.9;                                   // 玻璃人更易伤
     if(p.injured===0 && Math.random()<injChance){ p.injured=rint(1,3); p.formIdx=clamp(p.formIdx-1,0,4); }
     const fair=fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult*(p.injured?0.78:1);
     p.value=round1(clamp((p.value*0.55+fair*0.45)*rnd(0.96,1.05),0.15,9999));
@@ -1245,7 +1282,7 @@ function playerCard(p,mode){
   return `<div class="pcard ${star} ${injc} ${wonder}">
     <div class="prow">
       <span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span>
-      <span class="pname">${NATIONS[p.nat].flag} ${p.name}</span>
+      <span class="pname">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</span>
       <span class="ovr">${p.ovr}</span>
     </div>
     <div class="meta">
@@ -1361,7 +1398,7 @@ function marketList(){
 function worldPlayerCard(p,club){
   const scoutBtn=p.scouted?"":`<button class="btn sm scout" onclick="sendScout(${p.id})">🔭考察</button>`;
   return `<div class="pcard ${(isWonder(p)&&p.scouted)?'wonder':''} ${p.injured?'injured':''}">
-    <div class="prow"><span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span><span class="pname">${NATIONS[p.nat].flag} ${p.name}</span><span class="ovr">${p.ovr}</span></div>
+    <div class="prow"><span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span><span class="pname">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</span><span class="ovr">${p.ovr}</span></div>
     <div class="meta"><span>${p.age}岁</span>${formPill(p)} ${potBadge(p)} <span class="spacer" style="flex:1"></span><span class="val">${eur(p.value)}</span></div>
     <div class="meta"><span class="real">所属 ${club.name}</span> ${p.injured?`<span class="chg down">🤕${p.injured}轮</span>`:""}</div>
     <div class="actions"><button class="btn sm" onclick="openNegotiation(${p.id})">💬 求购</button>${scoutBtn}</div>
@@ -1703,10 +1740,13 @@ function viewNews(){
   </div>`;
 }
 function toggleLiveMatch(){ G.liveMatch=!G.liveMatch; save(); render(); toast(G.liveMatch?"已开启比赛直播":"已关闭直播（快速模拟）"); }
+function toggleAutoSub(){ G.autoSub=!G.autoSub; save(); render(); toast(G.autoSub?"助教自动换人：开":"助教自动换人：关"); }
 function viewMenu(){
   return `<div class="panel"><h2>🎬 比赛设置</h2>
     <div class="hint" style="margin-bottom:8px">开启后每场比赛逐分钟直播，可中场/落后时换人、变阵；关闭则瞬间出结果（快速过赛季）。</div>
     <button class="btn ${G.liveMatch?'':'ghost'}" onclick="toggleLiveMatch()">${G.liveMatch?'🎬 比赛直播：开':'⚡ 快速模拟：开（直播关）'}</button>
+    <div class="hint" style="margin:10px 0 6px">助教会在比赛后半段自动把体能透支的球员换下（跳过比赛时也照常调整）。想完全手动控制可关闭。</div>
+    <button class="btn ${G.autoSub?'':'ghost'}" onclick="toggleAutoSub()">${G.autoSub?'🔄 助教自动换人：开':'🙅 助教自动换人：关'}</button>
   </div>
   <div class="panel"><h2>⚙️ 菜单 / 存档</h2>
     <div style="display:flex; gap:8px; flex-wrap:wrap">
@@ -2124,9 +2164,10 @@ function matchGrowth(players){
     const gap=p.potential-p.ovr;
     const inT=p.owned && G.training && G.training.includes(p.id);
     const coachB = p.owned ? (staffLevel(lineCoachKey(POS_LINE[p.pos]))*0.012 + staffLevel("head")*0.008) : 0; // 专项+主教练成长加成
+    const prod = hasTrait(p,"prodigy")?0.03:0;   // 天才成长更快
     let ch=0, dec=false;
-    if(p.age<=23 && gap>0) ch=clamp(0.04+gap*0.008+(inT?0.04:0)+(p.age<=19?0.03:0)+coachB,0.03,0.36);
-    else if(p.age<=27 && gap>0) ch=0.03+(inT?0.03:0)+coachB;
+    if(p.age<=23 && gap>0) ch=clamp(0.04+gap*0.008+(inT?0.04:0)+(p.age<=19?0.03:0)+coachB+prod,0.03,0.4);
+    else if(p.age<=27 && gap>0) ch=0.03+(inT?0.03:0)+coachB+prod;
     else if(p.age>=30){ ch=inT?0.02:0.05; dec=true; if(p.owned) ch=clamp(ch - staffLevel("head")*0.006 - staffLevel(lineCoachKey(POS_LINE[p.pos]))*0.004,0.01,0.06); } // 教练抑制衰退
     if(ch>0 && Math.random()<ch){
       p.ovr=clamp(p.ovr+(dec?-1:1),40,99);
@@ -2326,13 +2367,14 @@ function concludeMatchInstant(cfg, mg, og){
 }
 function pickScorer(){
   const sq=starters(); if(!sq.length) return "球员";
-  const wt=p=>{const L=POS_LINE[p.pos]; return L==="FW"?5:L==="MF"?3:L==="DF"?1:0.2;};
+  const wt=p=>{const L=POS_LINE[p.pos]; let w=L==="FW"?5:L==="MF"?3:L==="DF"?1:0.2; if(hasTrait(p,"poacher"))w*=2.5; if(hasTrait(p,"aerial"))w*=1.4; if(hasTrait(p,"setpiece"))w*=1.3; if(hasTrait(p,"winger"))w*=1.2; return w;};
   let tot=sq.reduce((a,p)=>a+wt(p),0), r=Math.random()*tot;
   for(const p of sq){ r-=wt(p); if(r<=0) return lastName(p.name); }
   return lastName(sq[0].name);
 }
 function liveMatch(cfg){
-  LIVE={cfg, min:0, mg:0, og:0, feed:[], subs:0, maxSubs:5, myRed:0, oppRed:0, half:false, ended:false, speed:2, playing:false, ticker:null, menu:null, out:null, injured:null, willInjure:[], win:false};
+  LIVE={cfg, min:0, mg:0, og:0, feed:[], subs:0, maxSubs:5, myRed:0, oppRed:0, half:false, ended:false, speed:2, playing:false, ticker:null, menu:null, out:null, injured:null, willInjure:[], win:false, tiredWarned:new Set()};
+  if(cfg.allowSub) starters().forEach(p=>p.stam=100);   // 本场体能满格
   let el=document.getElementById("live"); if(el) el.remove();
   el=document.createElement("div"); el.className="live"; el.id="live";
   el.innerHTML=`<div class="lv-top" id="lvTop"></div><div class="lv-bar" id="lvBar"></div><div class="lv-feed" id="lvFeed"></div><div class="lv-ctrl" id="lvCtrl"></div>`;
@@ -2348,6 +2390,7 @@ function scheduleStep(){ if(!LIVE||!LIVE.playing) return; const d=LIVE.speed>=3?
 function liveStep(){
   if(!LIVE||!LIVE.playing||LIVE.ended) return;
   LIVE.min++; simMinute();
+  if(G.autoSub!==false && !LIVE.injured && (LIVE.min===62||LIVE.min===74||LIVE.min===84)){ if(autoSub(1)>0) paintLiveCtrl(); }  // 助教自动调整
   if(LIVE.injured){ livePause(); LIVE.menu="injury"; paintLiveTop(); paintLiveFeed(); paintLiveCtrl(); return; }
   if(LIVE.min>=45 && !LIVE.half){ LIVE.half=true; livePause(); pushFeed(45,`⏸ 中场休息 — 比分 ${LIVE.mg}-${LIVE.og}`,"big"); LIVE.menu="half"; paintLiveTop(); paintLiveFeed(); paintLiveCtrl(); return; }
   if(LIVE.min>=90){ liveEnd(); return; }
@@ -2355,20 +2398,50 @@ function liveStep(){
 }
 function simMinute(){
   const hn=LIVE.cfg.homeName||G.club;
+  // 体能：场上球员逐分钟掉体能（年龄大掉更快，铁人更慢）；只有俱乐部比赛(allowSub)用你的真实阵容
+  let sf=1;
+  if(LIVE.cfg.allowSub){
+    const on=starters();
+    on.forEach(p=>{ const d=(0.78+(p.age>=30?0.28:p.age>=27?0.12:0)+Math.random()*0.4)*(hasTrait(p,"ironman")?0.62:1); p.stam=clamp((p.stam==null?100:p.stam)-d,0,100);
+      if(p.stam<35 && !LIVE.tiredWarned.has(p.id)){ LIVE.tiredWarned.add(p.id); pushFeed(LIVE.min,`🥵 <b>${lastName(p.name)}</b> 体能告急（${Math.round(p.stam)}%），考虑换人`,"card"); } });
+    const avgStam = on.length? on.reduce((a,p)=>a+(p.stam==null?100:p.stam),0)/on.length : 100;
+    sf = clamp(0.82+avgStam/100*0.18, 0.82, 1);  // 越累进攻越弱
+  }
   const x=LIVE.cfg.getXG();
-  const myx=Math.max(0.05,x.mxg*(1-LIVE.myRed*0.13)*(1+LIVE.oppRed*0.10));
-  const opx=Math.max(0.05,x.oxg*(1-LIVE.oppRed*0.13)*(1+LIVE.myRed*0.10));
+  const myx=Math.max(0.05,x.mxg*sf*(1-LIVE.myRed*0.13)*(1+LIVE.oppRed*0.10));
+  const opx=Math.max(0.05,x.oxg*(1+(1-sf)*0.5)*(1-LIVE.oppRed*0.13)*(1+LIVE.myRed*0.10));
   if(Math.random()<myx/90){ LIVE.mg++; const sc=LIVE.cfg.ntTactic?"":pickScorer(); pushFeed(LIVE.min,`⚽ 进球！${hn}${sc?` — <b>${sc}</b>`:''} 破门！ ${LIVE.mg}-${LIVE.og}`,"goal"); }
   if(Math.random()<opx/90){ LIVE.og++; pushFeed(LIVE.min,`💥 失球…… ${LIVE.cfg.oppName} 得手 ${LIVE.mg}-${LIVE.og}`,"concede"); }
+  if(LIVE.cfg.allowSub && Math.random()<0.0025 && starters().some(p=>hasTrait(p,"setpiece"))){ LIVE.mg++; const s=starters().filter(p=>hasTrait(p,"setpiece")); pushFeed(LIVE.min,`⚽ 定位球破门！${hn} — <b>${lastName(pick(s).name)}</b>（定位球大师）${LIVE.mg}-${LIVE.og}`,"goal"); }
   if(Math.random()<(myx+opx)/90*0.7){ pushFeed(LIVE.min,(Math.random()<0.5?`${hn}：`:`${LIVE.cfg.oppName}：`)+pick(LV_MISS)); }
   if(Math.random()<0.011){ pushFeed(LIVE.min,`🟨 黄牌 — ${Math.random()<0.5?hn:LIVE.cfg.oppName}`,"card"); }
-  if(Math.random()<0.0016){ const me=Math.random()<0.5; if(me) LIVE.myRed++; else LIVE.oppRed++; pushFeed(LIVE.min,`🟥 红牌！${me?G.club+' 少打一人':LIVE.cfg.oppName+' 被罚下'}`,"card"); }
+  if(Math.random()<0.0016){ const me=Math.random()<0.5; if(me) LIVE.myRed++; else LIVE.oppRed++; pushFeed(LIVE.min,`🟥 红牌！${me?hn+' 少打一人':LIVE.cfg.oppName+' 被罚下'}`,"card"); }
   if(LIVE.cfg.allowSub && LIVE.subs<LIVE.maxSubs && !LIVE.injured && Math.random()<0.004){
-    const cand=starters().filter(p=>!p._subOn); if(cand.length){ const v=pick(cand); LIVE.injured=v.id; pushFeed(LIVE.min,`🚑 <b>${lastName(v.name)}</b> 受伤倒地！`,"card"); }
+    const pool=starters().filter(p=>!p._subOn);
+    const cand = pool.filter(p=>hasTrait(p,"fragile")).length && Math.random()<0.5 ? pick(pool.filter(p=>hasTrait(p,"fragile"))) : (pool.length?pick(pool):null);
+    if(cand){ LIVE.injured=cand.id; pushFeed(LIVE.min,`🚑 <b>${lastName(cand.name)}</b> 受伤倒地！`,"card"); }
   }
 }
 function liveSetSpeed(s){ if(!LIVE) return; LIVE.speed=s; paintLiveCtrl(); if(LIVE.playing){ if(LIVE.ticker) clearTimeout(LIVE.ticker); scheduleStep(); } }
-function liveSkip(){ if(!LIVE) return; livePause(); LIVE.injured=null; while(LIVE.min<90){ LIVE.min++; simMinute(); LIVE.injured=null; } liveEnd(); }
+// 助教自动换人：把体能透支的非门将换成同位置、体力充沛的最佳替补
+function autoSub(limit){
+  if(!LIVE||!LIVE.cfg.allowSub) return 0; let made=0;
+  while(LIVE.subs<LIVE.maxSubs && made<(limit||99)){
+    const tired=starters().filter(p=>POS_LINE[p.pos]!=="GK" && !p._subOn && (p.stam==null?100:p.stam)<58).sort((a,b)=>(a.stam==null?100:a.stam)-(b.stam==null?100:b.stam));
+    if(!tired.length) break;
+    const out=tired[0];
+    const bench=G.squad.filter(p=>!p.starter && !p.injured && !p._subOff);
+    let cand=bench.filter(p=>POS_LINE[p.pos]===POS_LINE[out.pos]).sort((a,b)=>b.ovr-a.ovr)[0] || bench.sort((a,b)=>b.ovr-a.ovr)[0];
+    if(!cand) break;
+    const idx=G.lineup.indexOf(out.id); if(idx<0) break;
+    G.lineup[idx]=cand.id; out.starter=false; out._subOff=true; cand.starter=true; cand._subOn=true; cand.stam=100; syncStarters(); LIVE.subs++; made++;
+    pushFeed(LIVE.min,`🔄 助教换人：${lastName(out.name)} ↓  ${lastName(cand.name)} ↑（体能 ${Math.round(out.stam==null?100:out.stam)}%）`,"big");
+  }
+  return made;
+}
+function liveSkip(){ if(!LIVE) return; livePause(); LIVE.injured=null;
+  while(LIVE.min<90){ LIVE.min++; simMinute(); LIVE.injured=null; if(G.autoSub!==false && (LIVE.min===58||LIVE.min===70||LIVE.min===80)) autoSub(1); }
+  liveEnd(); }
 function liveOpenSub(presetOut){ if(!LIVE) return; livePause(); LIVE.menu="sub"; LIVE.out=presetOut||null; paintLiveCtrl(); }
 function liveOpenTactic(){ if(!LIVE) return; livePause(); LIVE.menu="tactic"; paintLiveCtrl(); }
 function livePickOut(id){ LIVE.out=id; paintLiveCtrl(); }
@@ -2378,7 +2451,7 @@ function liveDoSub(inId){
   if(idx<0){ LIVE.out=null; paintLiveCtrl(); return; }
   G.lineup[idx]=inId;
   const op=G.squad.find(p=>p.id===outId), ip=G.squad.find(p=>p.id===inId);
-  if(op) op.starter=false; if(ip){ ip.starter=true; ip._subOn=true; }
+  if(op){ op.starter=false; op._subOff=true; } if(ip){ ip.starter=true; ip._subOn=true; ip.stam=100; }
   syncStarters(); LIVE.subs++;
   pushFeed(LIVE.min,`🔄 换人：${op?lastName(op.name):''} ↓  ${ip?lastName(ip.name):''} ↑（剩 ${LIVE.maxSubs-LIVE.subs} 个名额）`,"big");
   if(LIVE.injured===outId) LIVE.injured=null;
@@ -2401,8 +2474,8 @@ function liveEnd(){
 }
 function liveConfirm(){
   if(!LIVE) return; const cfg=LIVE.cfg, mg=LIVE.mg, og=LIVE.og, win=LIVE.win;
-  // 清理临场标记
-  G.squad.forEach(p=>{ if(p._subOn) delete p._subOn; });
+  // 清理临场标记（体能/替补标记仅本场有效）
+  G.squad.forEach(p=>{ if(p._subOn) delete p._subOn; if(p._subOff) delete p._subOff; if(p.stam!=null) delete p.stam; });
   const el=document.getElementById("live"); if(el) el.remove();
   LIVE=null;
   cfg.onFinish(mg, og, win);
@@ -2434,9 +2507,10 @@ function paintLiveCtrl(){
       `<button class="btn ghost" onclick="liveInjuryStay()">坚持比赛（赛后伤停）</button>`;
   } else if(LIVE.menu==="sub"){
     const onPitch=starters();
-    const bench=G.squad.filter(p=>!p.starter && !p.injured);
-    const outList=onPitch.map(p=>`<div class="lv-pc ${LIVE.out===p.id?'sel':''}" onclick="livePickOut(${p.id})"><b>${p.pos}</b> ${lastName(p.name)} ${p.ovr}</div>`).join("");
-    const inList=LIVE.out!=null? bench.map(p=>`<div class="lv-pc" onclick="liveDoSub(${p.id})"><b>${p.pos}</b> ${lastName(p.name)} ${p.ovr}</div>`).join("")||'<div class="lv-pc hd">无可用替补</div>' : '<div class="lv-pc hd">← 先选要换下的球员</div>';
+    const bench=G.squad.filter(p=>!p.starter && !p.injured && !p._subOff);
+    const stamHTML=p=>{ const s=Math.round(p.stam==null?100:p.stam); const col=s>=60?'var(--up)':s>=35?'#e3c34a':'var(--down)'; return `<span class="stam"><i style="width:${s}%;background:${col}"></i></span> ${s}%`; };
+    const outList=onPitch.map(p=>`<div class="lv-pc ${LIVE.out===p.id?'sel':''}" onclick="livePickOut(${p.id})"><b>${p.pos}</b> ${lastName(p.name)} ${p.ovr} ${traitBadges(p)}<br>${stamHTML(p)}</div>`).join("");
+    const inList=LIVE.out!=null? bench.map(p=>`<div class="lv-pc" onclick="liveDoSub(${p.id})"><b>${p.pos}</b> ${lastName(p.name)} ${p.ovr} ${traitBadges(p)}<br>${stamHTML(p)}</div>`).join("")||'<div class="lv-pc hd">无可用替补</div>' : '<div class="lv-pc hd">← 先选要换下的球员</div>';
     ctrl=`<div class="lv-note">换人 · 剩 ${LIVE.maxSubs-LIVE.subs} 名额（先点场上球员，再点替补）</div>
       <div class="lv-pick">
         <div class="lv-pc hd">场上</div><div class="lv-pc hd">替补</div>
@@ -2504,6 +2578,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   STAFF_KEYS.forEach(k=>{ if(!(k in G.staff)) G.staff[k]=null; });
   if(!Array.isArray(G.staffMarket) || !G.staffMarket.length) refreshStaffMarket();
   if(G.liveMatch===undefined) G.liveMatch=true;
+  if(G.autoSub===undefined) G.autoSub=true;
   if(G.goalRank==null) G.goalRank=5;
   if(!G.archetype) G.archetype="mid";
   rivalClubs().forEach(c=>{ if(!c.tactic) c.tactic=pick(TACTIC_KEYS); if(c.squad){ c.squad.forEach(p=>p.free=false); c.str=round1(clubStr(c)); } });
@@ -2538,7 +2613,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.rivalViewConf==null) G.rivalViewConf=G.conf;
   if(G.leagueViewDiv==null) G.leagueViewDiv=myDiv();
   // 迁移：老存档球员是大类位置(GK/DF/MF/FW)，转成具体位置 + 初始化兼职位置
-  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; };
+  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); };
   allPlayers().forEach(fixPos);
   if(G.academy && Array.isArray(G.academy.prospects)) G.academy.prospects.forEach(fixPos);
   if(Array.isArray(G.loans)) G.loans.forEach(o=>fixPos(o.p));
