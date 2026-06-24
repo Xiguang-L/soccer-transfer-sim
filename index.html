@@ -1003,12 +1003,12 @@ function endSeason(){
       else if(p.age<=27 && gap>0 && Math.random()<0.5) p.ovr=clamp(p.ovr+rint(0,2),48,99);
       else if(p.age>=30) p.ovr=clamp(p.ovr-rint(0,3),42,99);
     }
-    if(p.owned){ p.clubApps=(p.clubApps||0)+(p.apps||0); p.clubGls=(p.clubGls||0)+(p.gls||0); p.clubAst=(p.clubAst||0)+(p.ast||0); }  // 累计队史数据
+    if(p.owned){ p.clubApps=(p.clubApps||0)+(p.apps||0); p.clubGls=(p.clubGls||0)+(p.gls||0); p.clubAst=(p.clubAst||0)+(p.ast||0); if(Math.random()<retireChance(p)) p._retire=true; }  // 累计队史数据 + 退役意愿（用本季出场判断）
     p.apps=0; p.gls=0; p.ast=0;
     p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
     if(p.owned) p.wage=wageDemand(p.ovr);
   });
-  G.squad.slice().forEach(p=>{ if(p.age>=37) retirePlayer(p); });   // 年长球员退役（含名人堂入选）
+  G.squad.slice().forEach(p=>{ if(p._retire){ delete p._retire; retirePlayer(p); } });   // 球员自主退役（含名人堂入选）
 
   // 合同 -1，到期处理
   const leaving=[];
@@ -1338,6 +1338,15 @@ function inductHOF(p, retired, clubName){
   G.hof.unshift({name:p.name, nat:p.nat, pos:p.pos, traits:(p.traits||[]).slice(), apps:s.apps, gls:s.gls, ast:s.ast, seasons, retired:!!retired, season:G.season, club});
   p._hof=true;
   pushNews(`🏛️ <b>${p.name}</b> 入选 ${club} 名人堂！（${seasons}季 · ${s.apps}场 · ${s.gls}球 · ${s.ast}助${retired?' · 功成身退':''}）`,"good");
+}
+// 球员自主退役意愿：年龄越大越高；仍是主力/水平高 → 踢得更久；边缘老将 → 更早挂靴
+function retireChance(p){
+  const a=p.age; if(a<34) return 0;
+  let base = a>=40?0.9 : a===39?0.72 : a===38?0.5 : a===37?0.3 : a===36?0.15 : a===35?0.07 : 0.03;
+  const apps=p.apps||0;
+  if(apps>=12) base*=0.5; else if(apps<=3) base*=1.45;
+  if(p.ovr>=80) base*=0.6; else if(p.ovr<60) base*=1.25;
+  return clamp(base,0,0.95);
 }
 function retirePlayer(p){
   const i=G.squad.findIndex(x=>x.id===p.id); if(i<0) return;
