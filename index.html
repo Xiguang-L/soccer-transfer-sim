@@ -874,6 +874,7 @@ function evolveMarket(){
     if(p.injured===0 && Math.random()<injChance){ p.injured=rint(1,3); p.formIdx=clamp(p.formIdx-1,0,4); }
     const fair=fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult*(p.injured?0.78:1);
     p.value=round1(clamp((p.value*0.55+fair*0.45)*rnd(0.96,1.05),0.15,9999));
+    if(p.owned){ if(!Array.isArray(p.valHist)) p.valHist=[]; p.valHist.push(p.value); if(p.valHist.length>40) p.valHist.shift(); } // 身价历史曲线
   });
   for(let k=0,n=rint(1,2);k<n;k++){
     const p=pick(all), e=Math.random();
@@ -1205,13 +1206,63 @@ function sell(id){
   pushNews(`💰 卖出 <b>${p.name}</b>：${eur(sale)}（${profit>=0?"盈利+":"亏损"}${eur(Math.abs(profit))}）。`,profit>=0?"good":"bad");
   save(); render();
 }
-function renew(id){
+// 续约要求的周薪：基础随评分，年限越长要求略高；状态好/闹转会要求更高
+function renewAsk(p, years){
+  let ask=wageDemand(p.ovr)*(1+(years-2)*0.04)*(1+(p.formIdx-2)*0.03);
+  if(p.wantOut) ask*=1.18;                          // 闹转会的球员要价更硬
+  if((p.morale==null?70:p.morale)<40) ask*=1.08;
+  if(p.age>=31) ask*=0.92;                            // 老将议价空间小
+  return round2(Math.max(0.01, ask));
+}
+function renew(id){ openRenew(id); }                  // 兼容旧入口
+function openRenew(id){
   const p=G.squad.find(x=>x.id===id); if(!p) return;
-  const cost=round1(Math.max(0.1,p.value*0.04));
-  if(G.cash<cost){ toast("现金不足支付续约佣金"); return; }
-  G.cash=round1(G.cash-cost);
-  p.contractYears=Math.min(p.contractYears+2,5); p.wage=wageDemand(p.ovr);
-  toast(`${p.name} 续约成功（+2年，佣金 ${eur(cost)}）`);
+  const base=wageDemand(p.ovr), initYears=Math.min((p.contractYears||1)+2,5);
+  G._renew={id, years:initYears, wage:round2(renewAsk(p,initYears)), wMin:round2(base*0.5), wMax:round2(Math.max(base*2.0,renewAsk(p,5)*1.2))};
+  const r=G._renew;
+  showOverlay(`
+    <h2 style="text-align:center">📝 续约 · ${NATIONS[p.nat].flag} ${p.name}</h2>
+    <div class="hint" style="text-align:center;margin:-4px 0 8px">${p.pos} · 评分 ${p.ovr} · ${p.age}岁 · 当前周薪 ${eur(p.wage)} · 合同剩 ${p.contractYears} 年</div>
+    <div class="negbox">
+      <div class="l"><span>球员要求周薪</span><b id="rnAsk"></b></div>
+      <div class="l"><span>态度</span><b id="rnMood"></b></div>
+      <div class="l"><span>续约佣金</span><b id="rnFee"></b></div>
+    </div>
+    <div class="field"><label>合同年限：<b id="rnYearsL"></b></label>
+      <input type="range" min="1" max="5" step="1" value="${r.years}" oninput="setRenew('years',this.value)"></div>
+    <div class="field"><label>提供周薪：<b id="rnWageL"></b></label>
+      <input type="range" min="${r.wMin}" max="${r.wMax}" step="0.01" value="${r.wage}" oninput="setRenew('wage',this.value)">
+      <div class="hint" id="rnRatio"></div></div>
+    <button class="btn big" style="width:100%;margin-top:6px" id="rnBtn" onclick="confirmRenew()"></button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="G._renew=null;closeOverlay()">取消</button>`, true);
+  syncRenew();
+}
+function setRenew(k,v){ if(!G._renew) return; G._renew[k]=(k==="wage"?round2(+v):+v); syncRenew(); }
+function syncRenew(){
+  const r=G._renew; if(!r) return; const p=G.squad.find(x=>x.id===r.id); if(!p) return;
+  const ask=renewAsk(p,r.years), ratio=r.wage/ask, fee=round1(Math.max(0.1,p.value*0.03));
+  let mood, ok=false;
+  if(ratio>=1.0){ mood='<span style="color:var(--up)">满意，乐意续约 🤝</span>'; ok=true; }
+  else if(ratio>=0.88){ mood='<span style="color:var(--gold)">勉强可以接受</span>'; ok=true; }
+  else if(ratio>=0.75){ mood='<span style="color:#e3c34a">嫌低，犹豫不决（可能拒绝）</span>'; ok=true; }
+  else { mood='<span style="color:var(--down)">报价太低，拒绝谈判 🙅</span>'; ok=false; }
+  const set=(id,html)=>{ const e=document.getElementById(id); if(e) e.innerHTML=html; };
+  set("rnAsk",`${eur(ask)}/轮`); set("rnMood",mood); set("rnFee",eur(fee));
+  set("rnYearsL",`${r.years} 年`); set("rnWageL",`${eur(r.wage)}/轮`);
+  set("rnRatio",`要求 ${eur(ask)} · 你提供 ${Math.round(ratio*100)}%`);
+  const btn=document.getElementById("rnBtn"); if(btn){ btn.disabled=!ok; btn.textContent= ok?`确认续约（佣金 ${eur(fee)}）`:'对方拒绝此报价'; }
+}
+function confirmRenew(){
+  const r=G._renew; if(!r) return; const p=G.squad.find(x=>x.id===r.id); if(!p){ closeOverlay(); return; }
+  const ask=renewAsk(p,r.years), ratio=r.wage/ask, fee=round1(Math.max(0.1,p.value*0.03));
+  if(ratio<0.75){ toast(`${p.name} 拒绝了这份报价`); return; }
+  if(ratio<0.88 && Math.random()<0.5){ toast(`${p.name} 觉得待遇太低，谈崩了`); pushNews(`🙅 <b>${p.name}</b> 拒绝了你的续约报价（嫌薪资偏低）。`,"bad"); return; }
+  if(G.cash<fee){ toast("现金不足支付续约佣金"); return; }
+  G.cash=round1(G.cash-fee);
+  p.contractYears=r.years; p.wage=round2(r.wage); p.wantOut=false; p.morale=clamp((p.morale==null?70:p.morale)+8,0,100);
+  G._renew=null; closeOverlay();
+  toast(`${p.name} 续约成功（${r.years}年 · 周薪 ${eur(p.wage)}）`);
+  pushNews(`✍️ <b>${p.name}</b> 与球队续约 ${r.years} 年，周薪 ${eur(p.wage)}/轮。`,"good");
   save(); render();
 }
 function acceptOffer(playerId){
@@ -1294,7 +1345,7 @@ function playerCard(p,mode){
     extra=`<div class="meta">买入 ${eur(p.buyPrice)} ${fmtChg(p)} · 周薪 ${eur(p.wage)} ${ctr} ${tt}</div>`;
     actions=`<div class="actions">
       <button class="btn sm ${p.starter?'':'ghost'}" onclick="toggleStarter(${p.id})">${p.starter?"✓首发":"替补"}</button>
-      ${p.contractYears<=1?`<button class="btn sm ghost" onclick="renew(${p.id})">续约</button>`:""}
+      <button class="btn sm ghost" onclick="openRenew(${p.id})">${p.contractYears<=1?'⚠️ 续约':'续约'}</button>
       <button class="btn sm ghost" onclick="loanOut(${p.id})">租借</button>
       <button class="btn sm sell" onclick="sell(${p.id})">卖 ${eur(round1(p.value*0.96))}</button>
     </div>`;
@@ -2410,6 +2461,14 @@ function showOverlay(html,center){ const m=$("#modal"); m.className="modal"+(cen
 function closeOverlay(){ $("#overlay").classList.remove("show"); }
 // 球员详情：任意带 id 的球员名字都可点击跳转到此
 function findAnyPlayer(id){ let p=findPlayer(id); if(!p && Array.isArray(G.loans)){ const o=G.loans.find(o=>o&&o.p&&o.p.id===id); if(o) p=o.p; } return p; }
+function sparkline(arr,cur){
+  const a=(arr||[]).slice(-30); if(cur!=null) a.push(cur);
+  if(a.length<2) return '<span class="hint">数据积累中…（赛季推进后显示）</span>';
+  const w=260,h=46,pad=4; const mn=Math.min(...a),mx=Math.max(...a); const rng=(mx-mn)||1;
+  const xy=a.map((v,i)=>`${(pad+i*(w-2*pad)/(a.length-1)).toFixed(1)},${(pad+(h-2*pad)*(1-(v-mn)/rng)).toFixed(1)}`);
+  const up=a[a.length-1]>=a[0]; const col=up?'#36d399':'#f87272';
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="46" preserveAspectRatio="none" style="display:block"><polyline points="${xy.join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></svg>`;
+}
 function openPlayer(id){ const p=findAnyPlayer(id); if(!p){ toast("找不到该球员"); return; } showOverlay(playerModalHTML(p), true); }
 function playerModalHTML(p){
   const owned=!!p.owned;
@@ -2425,11 +2484,13 @@ function playerModalHTML(p){
     <div class="l"><span>周薪</span><b>${eur(p.wage)}/轮</b></div>
     <div class="l"><span>合同</span><b>${p.contractYears} 年${p.contractYears<=1?' ⚠️':''}</b></div>
     <div class="l"><span>士气</span><b>${moraleEmoji(p)} ${Math.round(p.morale==null?70:p.morale)}${p.wantOut?' · 要求转会':''}</b></div>
-    <div class="l"><span>本赛季出场</span><b>${p.apps||0} 场</b></div>
     <div class="l"><span>买入价</span><b>${eur(p.buyPrice||0)} ${fmtChg(p)}</b></div>
     ${G.training&&G.training.includes(p.id)?`<div class="l"><span>训练</span><b>🎓 训练中${p.learnPos?` · 学习 ${POS_CN[p.learnPos]||p.learnPos}`:''}</b></div>`:''}
   ` : '';
-  const act = (!owned && !inAcademy)? `<button class="btn" style="width:100%;margin-top:10px" onclick="closeOverlay();openNegotiation(${p.id})">💬 谈判 / 求购</button>` : '';
+  const peak = (p.valHist&&p.valHist.length)? Math.max(...p.valHist, p.value) : p.value;
+  const isFW = POS_LINE[p.pos]!=="GK";
+  const act = (!owned && !inAcademy)? `<button class="btn" style="width:100%;margin-top:10px" onclick="closeOverlay();openNegotiation(${p.id})">💬 谈判 / 求购</button>`
+    : owned? `<button class="btn" style="width:100%;margin-top:10px" onclick="closeOverlay();openRenew(${p.id})">📝 续约（谈年限与薪资）</button>` : '';
   return `
     <h2 style="text-align:center">${NATIONS[p.nat].flag} ${p.name} ${traitBadges(p)}</h2>
     <div class="hint" style="text-align:center;margin:-4px 0 10px">${where}${p.injured?` · 🤕 伤停 ${p.injured} 轮`:''}</div>
@@ -2445,6 +2506,15 @@ function playerModalHTML(p){
       <div class="l"><span>国籍</span><b>${NATIONS[p.nat].flag} ${p.nat}</b></div>
       ${ownedInfo}
     </div>
+    <h2 style="font-size:15px;margin:12px 0 6px">📊 本赛季数据</h2>
+    <div class="negbox">
+      <div class="l"><span>出场</span><b>${p.apps||0} 场</b></div>
+      <div class="l"><span>⚽ 进球</span><b>${p.gls||0}</b></div>
+      <div class="l"><span>🅰️ 助攻</span><b>${p.ast||0}</b></div>
+      ${(p.apps&&isFW)?`<div class="l"><span>场均参与进球</span><b>${(((p.gls||0)+(p.ast||0))/p.apps).toFixed(2)}</b></div>`:''}
+    </div>
+    <h2 style="font-size:15px;margin:12px 0 6px">📈 身价走势 <span class="hint">（巅峰 ${eur(peak)}）</span></h2>
+    <div class="negbox">${sparkline(p.valHist, p.value)}</div>
     <h2 style="font-size:15px;margin:12px 0 6px">🌟 特质</h2>
     <div class="negbox">${traitList}</div>
     ${act}
