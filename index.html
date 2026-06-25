@@ -1590,10 +1590,10 @@ function computeAwards(){
   const yt=tots.filter(e=>e.you).length; if(yt) pushNews(`⚽ 年度最佳阵容：你有 <b>${yt}</b> 名球员入选！`,"good");
 }
 function hofStats(p){ return {apps:(p.clubApps||0)+(p.apps||0), gls:(p.clubGls||0)+(p.gls||0), ast:(p.clubAst||0)+(p.ast||0)}; }
-function hofQualify(p){ const s=hofStats(p); return s.apps>=80 || s.gls>=45 || s.ast>=45 || (p.clubSeasons||0)>=7; } // 各项含联赛+杯赛+洲际赛；任一达标或效力满7个有效赛季
+function hofQualify(p){ const s=hofStats(p); return s.apps>=150 || s.gls>=85 || s.ast>=85 || (p.clubSeasons||0)>=7; } // 各项含联赛+杯赛+洲际赛（18队/34轮赛季已等比调高）；任一达标或效力满7个有效赛季
 function hofProgress(p){   // 距离名人堂的进度（四条门槛任一达标即可，取最接近的一条作为总进度）
   const s=hofStats(p), cs=p.clubSeasons||0;
-  const crit=[ {k:'apps',cur:s.apps,need:80,label:'出场',icon:'👕'}, {k:'gls',cur:s.gls,need:45,label:'进球',icon:'⚽'}, {k:'ast',cur:s.ast,need:45,label:'助攻',icon:'🅰️'}, {k:'seasons',cur:cs,need:7,label:'效力赛季',icon:'🏛️'} ];
+  const crit=[ {k:'apps',cur:s.apps,need:150,label:'出场',icon:'👕'}, {k:'gls',cur:s.gls,need:85,label:'进球',icon:'⚽'}, {k:'ast',cur:s.ast,need:85,label:'助攻',icon:'🅰️'}, {k:'seasons',cur:cs,need:7,label:'效力赛季',icon:'🏛️'} ];
   crit.forEach(c=>c.pct=Math.min(1,c.cur/c.need));
   const best=[...crit].sort((a,b)=>b.pct-a.pct)[0];
   return {done:(p._hof||hofQualify(p)), pct:Math.round(best.pct*100), best, crit};
@@ -1681,7 +1681,7 @@ function viewHonors(){
     recRow("💰 最贵卖出", rec.recordSale?`${rec.recordSale.name} · ${eur(rec.recordSale.fee)}（S${rec.recordSale.season}）`:"—");
   const scorers=(rec.seasonScorers||[]).slice(0,12).map(s=>`<div class="l"><span>S${s.season} · ${liveName(s.id,s.name)}</span><b>${s.gls} 球${s.ast?` · ${s.ast} 助`:''}</b></div>`).join("")||'<div class="hint">赛季结束后记录当季最佳射手</div>';
   const hof=(G.hof||[]);
-  const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${liveName(e.id,e.name)}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">各项赛事（联赛+杯赛+洲际赛）累计 80+ 场 / 45+ 球 / 45+ 助（任一），或效力满 7 个有效赛季的球员，在退役或离队时入选名人堂。</div>';
+  const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${liveName(e.id,e.name)}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">各项赛事（联赛+杯赛+洲际赛）累计 150+ 场 / 85+ 球 / 85+ 助（任一），或效力满 7 个有效赛季的球员，在退役或离队时入选名人堂。</div>';
   const cand=[...G.squad].map(p=>({p, hp:hofProgress(p)})).sort((a,b)=>(b.hp.done-a.hp.done)||(b.hp.pct-a.hp.pct));
   const candHTML=cand.length? cand.map(({p,hp})=>{ const col=hp.done?'var(--up)':hp.pct>=66?'#4fc97a':hp.pct>=33?'#e3c34a':'var(--down)'; return `<div class="negbox"><div class="l"><span class="lnk" onclick="openPlayer(${p.id})">${NATIONS[p.nat]?NATIONS[p.nat].flag:''} ${p.name}</span><b style="color:${col}">${hp.done?'✅ 已达标':hp.pct+'%'}</b></div><div style="height:6px;border-radius:3px;background:#2a2a2a;overflow:hidden;margin:4px 0"><i style="display:block;height:100%;width:${hp.pct}%;background:${col}"></i></div><div class="hint">${hp.crit.map(c=>`${c.icon}${c.cur}/${c.need}`).join(' · ')}</div></div>`; }).join("") : '<div class="hint">暂无球员</div>';
   const aw=(G.awardsHist&&G.awardsHist[0]);
