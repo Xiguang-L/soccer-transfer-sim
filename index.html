@@ -896,6 +896,13 @@ function runArmsRace(){
   });
   rivals.forEach(c=>{ c.str=round1(clubStr(c)); });
 }
+// 世界同步增强：各国顶级联赛的强队逐季小幅变强，让全球与你「集体变强」同步，洲际赛持续有挑战（仅对无阵容的世界俱乐部调 str）
+function worldEscalate(){
+  if(G.armsRace===false) return;
+  const byCountry={};
+  G.table.forEach(c=>{ if(c.you||c.div!==0||c.squad) return; (byCountry[c.country]=byCountry[c.country]||[]).push(c); });
+  Object.values(byCountry).forEach(arr=>{ arr.sort((a,b)=>(b.str||0)-(a.str||0)); arr.slice(0,3).forEach((c,i)=>{ c.str=round1(clamp((c.str||70)+rnd(0.2,0.7)-i*0.12, 50, 93)); }); });
+}
 // ---------- 推进一轮 ----------
 function nextRound(){
   if(G.finished) return;
@@ -1270,7 +1277,8 @@ function endSeason(){
   { const ne=expandWorld(); if(ne>0) pushNews(`🌍 联赛扩容：新增 ${ne} 家俱乐部（每联赛 ${DIV_SIZE} 队 · ${DIV_NAMES.length} 级联赛金字塔），本赛季起生效。`,"good"); }
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
-  runArmsRace();                          // 军备竞赛：豪门追赶，保持挑战性
+  runArmsRace();                          // 军备竞赛：你的联赛对手追赶
+  worldEscalate();                        // 世界同步增强：各国顶级联赛强队逐季小幅变强
   ensureRival();                          // 升降级后校验/重选宿敌
   startCup(); G.midweekDone=false;
   if(G.conti && G.conti.tier!=null) startConti();                       // 洲际杯自动加入当季赛程
@@ -2892,10 +2900,16 @@ const CONTI={
 function contiTiers(){ return (CONTI[G.conf]||CONTI["欧洲"]).tiers; }
 function qualifyTier(rank, div){ if(div!==0) return null; const tiers=contiTiers(); let t=rank<=4?0:rank<=6?1:rank<=7?2:null; return t==null?null:Math.min(t,tiers.length-1); }
 function mkContiOpp(tier){
-  let pool=G.table.filter(c=>!c.you && c.conf===G.conf && c.country!==G.country);
+  // 真实出线名额：从本大洲各国「顶级联赛」按实力排序的球队中抽取（强国强队→高级别赛事），用其真实实力
+  const tiers=contiTiers(), tierIdx=Math.max(0,tiers.indexOf(tier));
+  let pool=G.table.filter(c=>!c.you && c.conf===G.conf && c.div===0 && c.country!==G.country);
+  if(!pool.length) pool=G.table.filter(c=>!c.you && c.conf===G.conf && c.div===0);
   if(!pool.length) pool=G.table.filter(c=>!c.you && c.conf===G.conf);
-  if(pool.length){ const c=pick(pool); return {name:c.name, oppStr:clamp(Math.round((clubStr(c)+tier.base)/2+rnd(-3,4)),55,92)}; }
-  const nat="法国"; return {name:(NATIONS[nat]?NATIONS[nat].flag:"")+genClubName(new Set()), oppStr:clamp(Math.round(tier.base+rnd(-6,6)),55,92)};
+  if(!pool.length){ const nat="法国"; return {name:(NATIONS[nat]?NATIONS[nat].flag:"")+genClubName(new Set()), oppStr:clamp(Math.round(tier.base+rnd(-6,6)),55,96)}; }
+  pool.sort((a,b)=>clubStr(b)-clubStr(a));
+  const band=tier.field||36, start=tiers.slice(0,tierIdx).reduce((a,t)=>a+(t.field||36),0);   // 真实出线：最强的 field 家→第1级，其后→第2级…
+  const c=pick(pool.slice(start, start+band)) || pick(pool) || pool[0];
+  return {name:c.name, oppStr:clamp(Math.round(clubStr(c)+rnd(-2,4)),55,96)};
 }
 function mkContiFix(tier,round){ const o=mkContiOpp(tier); return {opp:o.name, oppStr:o.oppStr, round, played:false, mg:0, og:0, win:false, draw:false}; }
 function startConti(){
