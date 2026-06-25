@@ -1115,10 +1115,11 @@ function endSeason(){
   G.rep=clamp(G.rep + (rank===1?10:rank<=3?6:rank<=G.goalRank?3:-2), 0, 100);
   updateBoard(rank===1?22: rank<=3?13: (rank<=G.goalRank?9: (rank>G.goalRank+3?-26:-13))); // 赛季考核：董事会信心大幅波动
   G.seasonsAtClub=(G.seasonsAtClub||1)+1;
-  const tv=tvRevenue(rank, finishDiv); G.lastTV=tv;
+  const tv=tvPayout(rank); G.lastTV=tv;
   G.cash=round1(G.cash+bonus+transferBudget+tv);
   pushNews(`💰 下赛季董事会拨款：联赛奖金 ${eur(bonus)} + 转会预算 ${eur(transferBudget)}（当前声望 ${Math.round(G.rep)}）。`,"good");
-  pushNews(`📺 转播分成到账 +${eur(tv)}（最终第 ${rank} 名${finishDiv===0?' · 顶级联赛':' · '+(DIV_NAMES[finishDiv]||'低级别联赛')}；保底+名次+人气分配，品牌越大越多）。`,"good");
+  pushNews(`📺 转播分成到账 +${eur(tv)}（最终第 ${rank} 名${G.tvDeal?` · ${G.tvDeal.broadcaster} ${TV_STRUCTS[G.tvDeal.struct].name}`:'（默认分成，可签转播合同）'}）。`,"good");
+  if(G.tvDeal){ G.tvDeal.seasonsLeft--; if(G.tvDeal.seasonsLeft<=0){ pushNews(`📺 与 ${G.tvDeal.broadcaster} 的转播合同到期，可在「💼 经营」重新谈判。`,"match"); G.tvDeal=null; } }
   const metGoal = rank<=G.goalRank;
   pushNews(`🏁 第 ${G.season} 赛季结束！最终第 ${rank} 名（目标前 ${G.goalRank}）— ${metGoal?"达成预期 ✅":"未达预期 ⚠️"}，赛季奖金 +${eur(bonus)}。`, metGoal?"good":"bad");
   if(rank===1){ const t=`${flagOf(G.country)}${G.country} ${DIV_NAMES[finishDiv]||'联赛'} 冠军`; addHonor(t); pushNews(`🏆 ${t}！`,"good"); celebrate({trophy:"🏆", title:`${DIV_NAMES[finishDiv]||'联赛'} 冠军`, sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 联赛登顶 · 奖金 +${eur(bonus)}`}); }
@@ -2404,13 +2405,52 @@ function upgradeInvest(k){
   pushNews(`🏗️ 俱乐部投资：${INVEST[k].name} 升至 Lv.${G.invest[k]}（耗资 ${eur(cost)}）。`,"good");
   save(); render();
 }
-// ---------- 转播分成（赛季末按 保底均分 + 名次绩效 + 人气/转播场次 结算；顶级联赛远高于低级别） ----------
-function tvRevenue(rank, div){
+// ---------- 转播分成：可谈判的转播合同（总包 + 分配结构），无合同时回退旧公式 ----------
+function tvRevenue(rank, div){   // 无合同时的默认公式：保底均分 + 名次绩效 + 人气
   const n=DIV_SIZE, top=(div===0);
-  const equal = top?18:4;                                  // 保底均分
-  const merit = (n - clamp(rank,1,n) + 1) * (top?2.5:0.6); // 名次绩效（越靠前越多）
-  const facility = brandValue() * (top?0.25:0.06);         // 人气/转播场次（品牌越大越常被转播）
-  return round1(equal + merit + facility);
+  return round1((top?18:4) + (n - clamp(rank,1,n) + 1)*(top?2.5:0.6) + brandValue()*(top?0.25:0.06));
+}
+const TV_STRUCTS={
+  safe:    {name:"保底型", guar:0.70, merit:0.20, pop:0.10, desc:"大部分保底，稳定但上限低"},
+  merit:   {name:"绩效型", guar:0.25, merit:0.60, pop:0.15, desc:"押注成绩：夺冠暴涨，垫底缩水"},
+  pop:     {name:"人气型", guar:0.30, merit:0.20, pop:0.50, desc:"押注品牌/转播热度，品牌越大越赚"},
+  balanced:{name:"均衡型", guar:0.40, merit:0.35, pop:0.25, desc:"风险与回报均衡"},
+};
+const TV_BROADCASTERS=["天创体育","环球体育网","寰宇传媒","卓越体育","星空卫视","鹏程传媒"];
+function tvOffer(){ const d0=myDiv()===0; return round1((d0?22:6) + (G.rep||50)*(d0?0.12:0.03) + brandValue()*(d0?0.18:0.05)); }   // 广播商年度基础包报价
+function tvMeritF(rank){ return clamp((DIV_SIZE - clamp(rank,1,DIV_SIZE) + 1)/DIV_SIZE * 1.9, 0.2, 1.9); }                       // 名次系数：第1≈1.9，垫底≈0.2
+function tvPopF(){ return clamp(brandValue()/60, 0.4, 1.8); }                                                                   // 人气系数：随品牌
+function tvPayout(rank){ const d=G.tvDeal; if(!d) return tvRevenue(rank, myDiv()); return round1(d.total*(d.guar*1.0 + d.merit*tvMeritF(rank) + d.pop*tvPopF())); }
+let tvNeg=null;
+function openTvDeal(){
+  if(G.tvDeal && G.tvDeal.seasonsLeft>0){ toast(`转播合同进行中（剩 ${G.tvDeal.seasonsLeft} 季），到期后可重谈`); return; }
+  tvNeg={ total:tvOffer(), broadcaster:pick(TV_BROADCASTERS), seasons:rint(2,4), struct:'balanced', pushed:false };
+  renderTvDeal();
+}
+function renderTvDeal(){
+  const t=tvNeg; if(!t) return; const S=TV_STRUCTS[t.struct];
+  const proj=rank=>round1(t.total*(S.guar + S.merit*tvMeritF(rank) + S.pop*tvPopF()));
+  showOverlay(`<h2 style="text-align:center">📺 转播合同谈判</h2>
+    <div class="hint" style="text-align:center;margin:-4px 0 8px"><b>${t.broadcaster}</b> 提出 ${t.seasons} 年合同 · 年度基础包 <b style="color:var(--gold)">${eur(t.total)}</b>。选择分配结构（决定风险/回报）：</div>
+    <div class="negbox">${Object.keys(TV_STRUCTS).map(k=>`<div class="l"><span><b style="color:${t.struct===k?'var(--gold)':'var(--txt)'}">${TV_STRUCTS[k].name}</b> <span class="hint">${TV_STRUCTS[k].desc}</span></span><button class="btn sm ${t.struct===k?'':'ghost'}" onclick="tvSetStruct('${k}')">${t.struct===k?'已选':'选'}</button></div>`).join("")}</div>
+    <div class="negbox"><div class="l"><span>夺冠预计</span><b style="color:var(--up)">${eur(proj(1))}/季</b></div><div class="l"><span>中游(第5)预计</span><b>${eur(proj(5))}/季</b></div><div class="l"><span>垫底预计</span><b style="color:var(--down)">${eur(proj(DIV_SIZE))}/季</b></div></div>
+    <button class="btn" style="width:100%;margin-bottom:8px" onclick="tvPush()" ${t.pushed?'disabled':''}>${t.pushed?'已争取过':'💪 争取更高总额（有风险，可能被压价）'}</button>
+    <button class="btn big" style="width:100%" onclick="tvSign()">✅ 签约 ${t.seasons} 年</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="tvNeg=null;closeOverlay()">放弃（暂用默认分成）</button>`,true);
+}
+function tvSetStruct(k){ if(tvNeg&&TV_STRUCTS[k]){ tvNeg.struct=k; renderTvDeal(); } }
+function tvPush(){ if(!tvNeg||tvNeg.pushed) return; tvNeg.pushed=true;
+  const chance=clamp(0.4 + (G.rep||50)/200 + brandValue()/300, 0.3, 0.82);
+  if(Math.random()<chance){ const up=rnd(0.1,0.25); tvNeg.total=round1(tvNeg.total*(1+up)); toast(`谈判成功！总额提升 ${Math.round(up*100)}%`); }
+  else { const dn=rnd(0.04,0.1); tvNeg.total=round1(tvNeg.total*(1-dn)); toast(`广播商不满，略微压价 ${Math.round(dn*100)}%`); }
+  renderTvDeal();
+}
+function tvSign(){ const t=tvNeg; if(!t) return; const S=TV_STRUCTS[t.struct];
+  G.tvDeal={total:t.total, struct:t.struct, guar:S.guar, merit:S.merit, pop:S.pop, seasons:t.seasons, seasonsLeft:t.seasons, broadcaster:t.broadcaster};
+  tvNeg=null; closeOverlay();
+  toast(`已与 ${G.tvDeal.broadcaster} 签约 ${t.seasons} 年`);
+  pushNews(`📺 与 <b>${G.tvDeal.broadcaster}</b> 签订 ${t.seasons} 年转播合同（${S.name} · 年度基础包 ${eur(t.total)}）。`,"good");
+  save(); render();
 }
 // ---------- 财务 / 银行贷款 ----------
 function estSeasonGate(){ if(!G.stadium) return 0; const homeGames=Math.floor((G.totalRounds||22)/2); const rate=attendanceRate(75); return round1(homeGames*G.stadium.capacity*rate*G.stadium.ticketPrice/1e6); }
@@ -2421,7 +2461,7 @@ function creditLimit(){ return round1(Math.max(0, annualRevenue()*1.3*(0.55+(G.b
 function loanRate(){ return clamp(0.2 - (G.rep||50)/100*0.08 - (G.board==null?60:G.board)/100*0.06, 0.06, 0.2); }   // 总利率：信誉/信心越好越低
 function finSummary(){
   const perRoundIn=sponsorIncome()+commercialIncome();
-  const incEst=round1(perRoundIn*(G.totalRounds||22) + estSeasonGate() + tvRevenue(myRank(),myDiv()) + 12);   // +转播分成(按当前名次) +赛季奖金粗估
+  const incEst=round1(perRoundIn*(G.totalRounds||22) + estSeasonGate() + tvPayout(myRank()) + 12);   // +转播分成(按当前名次) +赛季奖金粗估
   const perRoundOut=wageBill()+loanWageBill()+staffWageBill();
   const expEst=round1(perRoundOut*(G.totalRounds||22) + debtPerSeason());
   return {incEst, expEst, net:round1(incEst-expEst)};
@@ -2584,10 +2624,12 @@ function viewBusiness(){
       <div class="l"><span>预计赛季收入</span><b style="color:var(--up)">${eur(fs.incEst)}</b></div>
       <div class="l"><span>预计赛季支出</span><b style="color:var(--down)">${eur(fs.expEst)}</b></div>
       <div class="l"><span>赞助+商业 / 轮</span><b>${eur(round2(sponsorIncome()+commercialIncome()))}</b></div>
-      <div class="l"><span>📺 转播分成（按当前名次 · 赛季末结算）</span><b style="color:var(--up)">${eur(tvRevenue(myRank(),myDiv()))}</b></div>
+      <div class="l"><span>📺 转播分成（按当前名次 · 赛季末结算）${G.tvDeal?` <span class="hint">${G.tvDeal.broadcaster}·${TV_STRUCTS[G.tvDeal.struct].name}·剩${G.tvDeal.seasonsLeft}季</span>`:''}</span><b style="color:var(--up)">${eur(tvPayout(myRank()))}</b></div>
       <div class="l"><span>工资 / 轮</span><b>${eur(round2(wageBill()+loanWageBill()+staffWageBill()))}</b></div>
       ${debtPerSeason()>0?`<div class="l"><span>每季还款</span><b style="color:var(--down)">${eur(debtPerSeason())}</b></div>`:''}
     </div>
+    <div class="hint" style="margin:8px 0 6px">📺 转播合同：${G.tvDeal?`<b>${G.tvDeal.broadcaster}</b> · ${TV_STRUCTS[G.tvDeal.struct].name} · 年度基础包 ${eur(G.tvDeal.total)} · 剩 ${G.tvDeal.seasonsLeft} 季`:'<b>未签约</b>（当前按默认分成结算）。可自行谈总包与分配结构，押注成绩/品牌换取更高回报。'}</div>
+    <button class="btn ${G.tvDeal&&G.tvDeal.seasonsLeft>0?'ghost':''}" style="margin-bottom:8px" onclick="openTvDeal()" ${G.tvDeal&&G.tvDeal.seasonsLeft>0?'disabled':''}>📺 ${G.tvDeal&&G.tvDeal.seasonsLeft>0?`转播合同进行中（剩 ${G.tvDeal.seasonsLeft} 季）`:'谈判转播合同'}</button>
     <div class="hint" style="margin:8px 0 6px">授信额度 <b>${eur(creditLimit())}</b>（随营收/董事会信心）。贷款立即到账、分季偿还；还不上会拖累董事会信心。</div>
     <button class="btn" onclick="openLoan()" ${creditLimit()<1?'disabled':''}>🏦 申请银行贷款</button>
     ${(G.debts&&G.debts.length)?`<div class="negbox" style="margin-top:8px">${G.debts.map(d=>`<div class="l"><span>贷款（剩 ${d.seasonsLeft} 季）</span><span>欠 ${eur(d.remaining)} · ${eur(d.perSeason)}/季</span></div>`).join("")}</div>`:''}
