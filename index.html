@@ -2869,25 +2869,25 @@ function finishStage(c, success, champion){
 // ======================= 洲际俱乐部杯赛（D-2） =======================
 const CONTI={
   "欧洲":{tiers:[
-    {name:"欧洲冠军联赛",short:"欧冠",field:36,base:82,ko:["十六强","八强","半决赛","决赛"]},
-    {name:"欧洲联赛",short:"欧联",field:36,base:76,ko:["十六强","八强","半决赛","决赛"]},
-    {name:"欧洲协会联赛",short:"欧会",field:36,base:70,ko:["八强","半决赛","决赛"]},
+    {name:"欧洲冠军联赛",short:"欧冠",field:48,base:82,lg:8,ko:["附加赛","十六强","八强","半决赛","决赛"]},
+    {name:"欧洲联赛",short:"欧联",field:48,base:76,lg:8,ko:["附加赛","十六强","八强","半决赛","决赛"]},
+    {name:"欧洲协会联赛",short:"欧会",field:48,base:70,lg:6,ko:["十六强","八强","半决赛","决赛"]},
   ]},
   "亚洲":{tiers:[
-    {name:"亚冠精英联赛",short:"亚冠",field:24,base:78,ko:["八强","半决赛","决赛"]},
-    {name:"亚冠二级联赛",short:"亚冠2",field:32,base:72,ko:["十六强","八强","半决赛","决赛"]},
-    {name:"亚足联挑战联赛",short:"挑战赛",field:20,base:66,ko:["八强","半决赛","决赛"]},
+    {name:"亚冠精英联赛",short:"亚冠",field:36,base:78,lg:8,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"亚冠二级联赛",short:"亚冠2",field:36,base:72,lg:6,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"亚足联挑战联赛",short:"挑战赛",field:28,base:66,lg:6,ko:["八强","半决赛","决赛"]},
   ]},
   "非洲":{tiers:[
-    {name:"非洲冠军联赛",short:"非冠",field:64,base:74,ko:["八强","半决赛","决赛"]},
-    {name:"非洲联盟杯",short:"联盟杯",field:56,base:68,ko:["八强","半决赛","决赛"]},
+    {name:"非洲冠军联赛",short:"非冠",field:64,base:74,lg:6,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"非洲联盟杯",short:"联盟杯",field:56,base:68,lg:6,ko:["十六强","八强","半决赛","决赛"]},
   ]},
   "南美":{tiers:[
-    {name:"南美解放者杯",short:"解放者",field:47,base:80,ko:["十六强","八强","半决赛","决赛"]},
-    {name:"南美俱乐部杯",short:"南美杯",field:44,base:73,ko:["十六强","八强","半决赛","决赛"]},
+    {name:"南美解放者杯",short:"解放者",field:47,base:80,lg:8,ko:["附加赛","十六强","八强","半决赛","决赛"]},
+    {name:"南美俱乐部杯",short:"南美杯",field:44,base:73,lg:6,ko:["十六强","八强","半决赛","决赛"]},
   ]},
-  "中北美":{tiers:[ {name:"中北美冠军杯",short:"中北美",field:27,base:72,ko:["八强","半决赛","决赛"]} ]},
-  "大洋洲":{tiers:[ {name:"大洋洲冠军联赛",short:"大洋洲",field:16,base:62,ko:["半决赛","决赛"]} ]},
+  "中北美":{tiers:[ {name:"中北美冠军杯",short:"中北美",field:36,base:72,lg:6,ko:["十六强","八强","半决赛","决赛"]} ]},
+  "大洋洲":{tiers:[ {name:"大洋洲冠军联赛",short:"大洋洲",field:24,base:62,lg:4,ko:["八强","半决赛","决赛"]} ]},
 };
 function contiTiers(){ return (CONTI[G.conf]||CONTI["欧洲"]).tiers; }
 function qualifyTier(rank, div){ if(div!==0) return null; const tiers=contiTiers(); let t=rank<=4?0:rank<=6?1:rank<=7?2:null; return t==null?null:Math.min(t,tiers.length-1); }
@@ -2901,9 +2901,10 @@ function mkContiFix(tier,round){ const o=mkContiOpp(tier); return {opp:o.name, o
 function startConti(){
   if(G.conti.tier==null){ toast("本赛季没有洲际参赛资格"); return; }
   const tier=contiTiers()[G.conti.tier];
-  const lg=[]; for(let i=0;i<4;i++) lg.push(mkContiFix(tier,"联赛阶段"));
-  G.conti.comp={tierIdx:G.conti.tier, stage:'league', fixtures:lg, idx:0, done:false, outcome:""};
-  pushNews(`🌍 ${tier.name} 开赛（联赛阶段：4 场拿满 4 分即可出线）。`,"good");
+  const lgN=tier.lg||4, adv=Math.ceil(lgN*1.1);   // 联赛阶段场次与出线分数（随赛事规模）
+  const lg=[]; for(let i=0;i<lgN;i++) lg.push(mkContiFix(tier,"联赛阶段"));
+  G.conti.comp={tierIdx:G.conti.tier, stage:'league', fixtures:lg, idx:0, done:false, outcome:"", adv};
+  pushNews(`🌍 ${tier.name} 开赛（${tier.field} 队参赛 · 联赛阶段 ${lgN} 场，拿满 ${adv} 分出线，随后淘汰赛）。`,"good");
   save(); render();
 }
 function playContiMatch(){
@@ -2926,7 +2927,7 @@ function resolveContiMatch(c,f,mg,og,win){
     f.win=mg>og; f.draw=mg===og; c.idx++;
     if(c.idx>=c.fixtures.length){
       const pts=c.fixtures.reduce((a,x)=>a+(x.mg>x.og?3:x.mg===x.og?1:0),0);
-      if(pts>=4){ c.stage='ko'; c.idx=0; c.fixtures=tier.ko.map(rd=>mkContiFix(tier,rd)); pushNews(`🌍 ${tier.name}：小组出线，进入淘汰赛！`,"good"); }
+      if(pts>=(c.adv||4)){ c.stage='ko'; c.idx=0; c.fixtures=tier.ko.map(rd=>mkContiFix(tier,rd)); pushNews(`🌍 ${tier.name}：联赛阶段出线（${pts} 分），进入淘汰赛！`,"good"); }
       else { c.done=true; finishConti(c,false); }
     }
   } else {
