@@ -530,7 +530,7 @@ function newGame(world, clubIdx, budget){
     offers:[], academy:{level:1, prospects:[], targetNat:null},
     rep:50, sponsorSlots:{}, sponsorOffers:[], partners:[], partnerOffers:[], installments:[], debts:[], loans:[], jobOffers:[], national:{nation:null, titles:0, tactic:"平衡", invites:[], comp:null, nextStage:"contQual", lastFreePick:-99},
     conti:{tier: (myD===0)?(s>=80?0:s>=73?1:s>=68?2:null):null, comp:null, titles:0},
-    cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true, events:true,
+    cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true, events:true, armsRace:true,
     board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
     stadium:{capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}, facil:{medical:0, commercial:0},
     records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[], derby:{rival:null,w:0,d:0,l:0}, invest:{brand:0,training:0,scouting:0,fund:0},
@@ -809,6 +809,30 @@ function ensureRival(){
   if(!inDiv){ const r=pickRival(); if(r && r!==G.derby.rival){ G.derby={rival:r,w:0,d:0,l:0}; } }
 }
 function isDerbyOpp(name){ return !!(G.derby && G.derby.rival && G.derby.rival===name); }
+// ---------- 军备竞赛 / 动态难度：你越统治，豪门越砸钱追赶，保持挑战性 ----------
+function boostClub(c, gain){
+  if(!c.squad){ c.str=round1((c.str||75)+gain); return; }
+  const best=[...c.squad].sort((a,b)=>b.ovr-a.ovr);
+  let budget=gain*11;   // 总提升点数（平摊到主力≈gain）
+  for(let i=0;i<best.length && budget>0.5;i++){ const p=best[i]; const inc=Math.min(Math.ceil(budget), rint(1,2)); p.ovr=clamp(p.ovr+inc,40,96); p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult); budget-=inc; }
+  if(gain>=2 && Math.random()<0.5){ const star=makePlayer(pick(POS), 0); star.age=rint(23,28); star.ovr=clamp(Math.round(clubStr(c)+rnd(1,4)),60,95); star.scouted=true; star.value=round1(fairValue(star.ovr,star.age)*FORMS[star.formIdx].mult); c.squad.push(star); }   // 头号豪门偶尔签下球星
+}
+function runArmsRace(){
+  if(G.armsRace===false) return;
+  const me=teamRatings().ovr, myD=myDiv();
+  const rivals=divClubs(myD).filter(c=>!c.you); if(!rivals.length) return;
+  const avg=rivals.reduce((s,c)=>s+clubStr(c),0)/rivals.length;
+  const dominance=Math.max(0, me-avg), streak=(G.dyn&&G.dyn.streak)||0;
+  const ambitious=[...rivals].sort((a,b)=>clubStr(b)-clubStr(a)).slice(0,3);
+  ambitious.forEach((c,idx)=>{
+    const cur=clubStr(c), target=me+1-idx;                       // 头号挑战者直逼/反超你
+    const gain=clamp((target-cur)*0.45 + dominance*0.12 + streak*0.4, 0, 3.2);
+    if(gain<0.3) return;
+    boostClub(c, gain);
+    if(idx===0 && gain>=1.2) pushNews(`💰 <b>${c.name}</b> 重金引援、剑指冠军——实力大幅提升！`,"bad");
+  });
+  rivals.forEach(c=>{ c.str=round1(clubStr(c)); });
+}
 // ---------- 推进一轮 ----------
 function nextRound(){
   if(G.finished) return;
@@ -1171,6 +1195,7 @@ function endSeason(){
   G.table.forEach(t=>{t.P=t.W=t.D=t.L=t.GF=t.GA=t.pts=0;});
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
+  runArmsRace();                          // 军备竞赛：豪门追赶，保持挑战性
   ensureRival();                          // 升降级后校验/重选宿敌
   startCup(); G.midweekDone=false;
   if(G.conti && G.conti.tier!=null) startConti();                       // 洲际杯自动加入当季赛程
@@ -2116,6 +2141,7 @@ function viewNews(){
 function toggleLiveMatch(){ G.liveMatch=!G.liveMatch; save(); render(); toast(G.liveMatch?"已开启比赛直播":"已关闭直播（快速模拟）"); }
 function toggleAutoSub(){ G.autoSub=!G.autoSub; save(); render(); toast(G.autoSub?"助教自动换人：开":"助教自动换人：关"); }
 function toggleEvents(){ G.events=!G.events; save(); render(); toast(G.events?"随机剧情事件：开":"随机剧情事件：关"); }
+function toggleArmsRace(){ G.armsRace=!G.armsRace; save(); render(); toast(G.armsRace?"军备竞赛/动态难度：开":"军备竞赛/动态难度：关"); }
 function viewMenu(){
   return `<div class="panel"><h2>🎬 比赛设置</h2>
     <div class="hint" style="margin-bottom:8px">开启后每场比赛逐分钟直播，可中场/落后时换人、变阵；关闭则瞬间出结果（快速过赛季）。</div>
@@ -2124,6 +2150,8 @@ function viewMenu(){
     <button class="btn ${G.autoSub?'':'ghost'}" onclick="toggleAutoSub()">${G.autoSub?'🔄 助教自动换人：开':'🙅 助教自动换人：关'}</button>
     <div class="hint" style="margin:10px 0 6px">随机剧情事件：赛季中会随机发生财团收购、丑闻、转会传闻、更衣室风波等（部分需你抉择）。不想被打扰可关闭。</div>
     <button class="btn ${G.events?'':'ghost'}" onclick="toggleEvents()">${G.events?'🎲 随机剧情事件：开':'🚫 随机剧情事件：关'}</button>
+    <div class="hint" style="margin:10px 0 6px">军备竞赛 / 动态难度：你越统治联赛，豪门对手越舍得砸钱追赶（实力逐季提升），保持挑战性。想要轻松碾压可关闭。</div>
+    <button class="btn ${G.armsRace?'':'ghost'}" onclick="toggleArmsRace()">${G.armsRace?'⚔️ 军备竞赛：开':'🛌 军备竞赛：关'}</button>
   </div>
   <div class="panel"><h2>⚙️ 菜单 / 存档</h2>
     <div style="display:flex; gap:8px; flex-wrap:wrap">
@@ -3351,6 +3379,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.liveMatch===undefined) G.liveMatch=true;
   if(G.autoSub===undefined) G.autoSub=true;
   if(G.events===undefined) G.events=true;
+  if(G.armsRace===undefined) G.armsRace=true;
   if(G.board==null) G.board=62;
   if(G.boardWarned==null) G.boardWarned=false;
   if(G.seasonsAtClub==null) G.seasonsAtClub=1;
