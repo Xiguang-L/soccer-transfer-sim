@@ -613,6 +613,7 @@ function drainCondition(){   // 一场比赛后：出场球员消耗体能（密
   G.squad.forEach(p=>{ p._subOff=false; p._subOn=false; });
 }
 function condMini(p){ const c=p.condition==null?100:p.condition; if(c>=92) return ''; const col=c>=70?'#4fc97a':c>=45?'#e3c34a':'var(--down)'; return ` <span style="color:${col};font-size:11px" title="体能 ${Math.round(c)}%">⚡${Math.round(c)}</span>`; }
+function liveName(id, name){ return (id!=null && findAnyPlayer(id)) ? `<span class="lnk" onclick="openPlayer(${id})">${name}</span>` : name; }   // 仍在役→可点开详情；退役/查无→纯文本
 function recoverCondition(){  // 每轮（一周休整）：全队恢复体能，年轻人/医疗设施恢复更快
   const med=staffLevel("med")+((G.facil&&G.facil.medical)?G.facil.medical*0.5:0);
   G.squad.forEach(p=>{ const ageF=p.age<=23?1.15:p.age>=31?0.8:1; const r=Math.round(26*ageF*(1+0.04*med)); p.condition=clamp((p.condition==null?100:p.condition)+r,0,100); });
@@ -1544,7 +1545,7 @@ function ensureRecords(){ if(!G.records) G.records={topWin:null, recordSigning:n
 function recordMatch(mg,og,opp){ ensureRecords(); if(mg>og){ const m=mg-og, tw=G.records.topWin; if(!tw || m>(tw.mg-tw.og) || (m===(tw.mg-tw.og)&&mg>tw.mg)) G.records.topWin={mg,og,opp,season:G.season,club:G.club}; } }
 function noteSigning(p,fee){ ensureRecords(); if(!G.records.recordSigning || fee>G.records.recordSigning.fee) G.records.recordSigning={name:p.name, fee:round1(fee), season:G.season, club:G.club}; }
 function noteSale(p,fee){ ensureRecords(); if(!G.records.recordSale || fee>G.records.recordSale.fee) G.records.recordSale={name:p.name, fee:round1(fee), season:G.season, club:G.club}; }
-function recordSeasonScorer(){ ensureRecords(); const top=[...G.squad].filter(p=>p.gls).sort((a,b)=>b.gls-a.gls)[0]; if(top){ G.records.seasonScorers.unshift({season:G.season, name:top.name, gls:top.gls, ast:top.ast||0, club:G.club}); if(G.records.seasonScorers.length>40) G.records.seasonScorers.pop(); } }
+function recordSeasonScorer(){ ensureRecords(); const top=[...G.squad].filter(p=>p.gls).sort((a,b)=>b.gls-a.gls)[0]; if(top){ G.records.seasonScorers.unshift({season:G.season, id:top.id, name:top.name, gls:top.gls, ast:top.ast||0, club:G.club}); if(G.records.seasonScorers.length>40) G.records.seasonScorers.pop(); } }
 // ---------- 个人奖项：金球奖 / 金靴 / 年度最佳阵容（评选范围=你所在联赛，赛季末数据重置前计算） ----------
 function awEntry(e){ if(!e) return null; const p=e.p; return {id:p.id, name:p.name, club:e.club, nat:p.nat, pos:p.pos, ovr:p.ovr, gls:p.gls||0, ast:p.ast||0, you:!!e.you}; }
 function computeAwards(){
@@ -1575,7 +1576,7 @@ function inductHOF(p, retired, clubName){
   ensureRecords(); if(p._hof || !hofQualify(p)) return;
   const club=clubName||G.club;
   const s=hofStats(p), seasons=clamp((G.season-(p.joinedSeason||G.season))+1,1,30);
-  G.hof.unshift({name:p.name, nat:p.nat, pos:p.pos, traits:(p.traits||[]).slice(), apps:s.apps, gls:s.gls, ast:s.ast, seasons, retired:!!retired, season:G.season, club});
+  G.hof.unshift({id:p.id, name:p.name, nat:p.nat, pos:p.pos, traits:(p.traits||[]).slice(), apps:s.apps, gls:s.gls, ast:s.ast, seasons, retired:!!retired, season:G.season, club});
   p._hof=true;
   pushNews(`🏛️ <b>${p.name}</b> 入选 ${club} 名人堂！（${seasons}季 · ${s.apps}场 · ${s.gls}球 · ${s.ast}助${retired?' · 功成身退':''}）`,"good");
 }
@@ -1651,11 +1652,11 @@ function viewHonors(){
     recRow("🏟️ 最大比分胜利", rec.topWin?`${rec.topWin.mg}-${rec.topWin.og} vs ${rec.topWin.opp}（S${rec.topWin.season}）`:"—")+
     recRow("💸 队史标王（最贵引进）", rec.recordSigning?`${rec.recordSigning.name} · ${eur(rec.recordSigning.fee)}（S${rec.recordSigning.season}）`:"—")+
     recRow("💰 最贵卖出", rec.recordSale?`${rec.recordSale.name} · ${eur(rec.recordSale.fee)}（S${rec.recordSale.season}）`:"—");
-  const scorers=(rec.seasonScorers||[]).slice(0,12).map(s=>`<div class="l"><span>S${s.season} · ${s.name}</span><b>${s.gls} 球${s.ast?` · ${s.ast} 助`:''}</b></div>`).join("")||'<div class="hint">赛季结束后记录当季最佳射手</div>';
+  const scorers=(rec.seasonScorers||[]).slice(0,12).map(s=>`<div class="l"><span>S${s.season} · ${liveName(s.id,s.name)}</span><b>${s.gls} 球${s.ast?` · ${s.ast} 助`:''}</b></div>`).join("")||'<div class="hint">赛季结束后记录当季最佳射手</div>';
   const hof=(G.hof||[]);
-  const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${e.name}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">各项赛事（联赛+杯赛+洲际赛）累计 80+ 场 / 45+ 球 / 45+ 助（任一），或效力满 7 个有效赛季的球员，在退役或离队时入选名人堂。</div>';
+  const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${liveName(e.id,e.name)}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">各项赛事（联赛+杯赛+洲际赛）累计 80+ 场 / 45+ 球 / 45+ 助（任一），或效力满 7 个有效赛季的球员，在退役或离队时入选名人堂。</div>';
   const aw=(G.awardsHist&&G.awardsHist[0]);
-  const awName=(o)=>o.id!=null?`<span class="lnk" onclick="openPlayer(${o.id})">${o.name}</span>`:o.name;
+  const awName=(o)=>liveName(o.id,o.name);
   const awHTML = aw? `<div class="l"><span>🥇 金球奖</span><b style="color:var(--gold)">${awName(aw.ballon)}${aw.ballon.you?' ⭐':''} <span class="hint">${aw.ballon.club} · ${aw.ballon.ovr}</span></b></div>
     <div class="l"><span>👟 金靴</span><b style="color:var(--gold)">${awName(aw.boot)}${aw.boot.you?' ⭐':''} <span class="hint">${aw.boot.club} · ${aw.boot.gls}球</span></b></div>
     <div class="hint" style="margin:6px 0 3px">⚽ 年度最佳阵容（S${aw.season}）：</div>
