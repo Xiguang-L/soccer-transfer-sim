@@ -3833,10 +3833,12 @@ function renderSetup(){
       <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:180px;overflow:auto">${clubs.map(o=>`<span class="chip ${setupCfg.clubIdx===o.i?'active':''}" onclick="setClub(${o.i})">${o.c.name} · ${Math.round(o.c.str)} · ${DIV_NAMES[o.c.div]||'联赛'}</span>`).join("")}</div></div>`;
   }
   if(setupCfg.clubIdx!=null){
-    budgetBlock=`<div class="field"><label>启动资金（难度）</label>
-      <div class="row"><input type="range" id="setBudget" min="10" max="300" step="5" value="${setupCfg.budget}"
-        oninput="setupCfg.budget=+this.value; document.getElementById('setBudgetV').innerHTML=eur(+this.value)+' · '+budgetDifficulty(+this.value)">
-        <span class="rngval" id="setBudgetV" style="min-width:110px">${eur(setupCfg.budget)} · ${budgetDifficulty(setupCfg.budget)}</span></div></div>`;
+    budgetBlock=`<div class="field"><label>启动资金（自定义 · 百万欧元）</label>
+      <div class="row"><input type="number" id="setBudget" min="0" max="100000" step="1" value="${setupCfg.budget}"
+        style="flex:0 0 130px;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px;font-size:15px"
+        oninput="setupCfg.budget=Math.max(0,Math.round(+this.value||0)); document.getElementById('setBudgetV').innerHTML=eur(setupCfg.budget)+' · '+budgetDifficulty(setupCfg.budget)">
+        <span class="rngval" id="setBudgetV" style="min-width:110px">${eur(setupCfg.budget)} · ${budgetDifficulty(setupCfg.budget)}</span></div>
+      <div class="hint" style="margin-top:4px">直接输入想要的启动资金。参考：弱旅 ~25、中游 ~65、豪门 ~180（越高越简单）。</div></div>`;
     startBtn=`<button class="btn big" style="width:100%;margin-top:10px" onclick="doNewGame()">执教 ${setupWorld[setupCfg.clubIdx].name} ▶</button>`;
   }
   showOverlay(`<h2>🆕 新的征程（选大洲 → 国家 → 俱乐部）</h2>
