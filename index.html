@@ -533,7 +533,7 @@ function newGame(world, clubIdx, budget){
     cup:null, wcc:{in:false, comp:null, titles:0}, honors:[], midweekDone:false, liveMatch:true, autoSub:true, events:true,
     board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
     stadium:{capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}, facil:{medical:0, commercial:0},
-    records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[], derby:{rival:null,w:0,d:0,l:0},
+    records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[], derby:{rival:null,w:0,d:0,l:0}, invest:{brand:0,training:0,scouting:0,fund:0},
     lastWageBill:0, finished:false,
   };
   buildSchedules();
@@ -1061,6 +1061,9 @@ function endSeason(){
   const metGoal = rank<=G.goalRank;
   pushNews(`🏁 第 ${G.season} 赛季结束！最终第 ${rank} 名（目标前 ${G.goalRank}）— ${metGoal?"达成预期 ✅":"未达预期 ⚠️"}，赛季奖金 +${eur(bonus)}。`, metGoal?"good":"bad");
   if(rank===1){ const t=`${flagOf(G.country)}${G.country} ${DIV_NAMES[finishDiv]||'联赛'} 冠军`; addHonor(t); pushNews(`🏆 ${t}！`,"good"); celebrate({trophy:"🏆", title:`${DIV_NAMES[finishDiv]||'联赛'} 冠军`, sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 联赛登顶 · 奖金 +${eur(bonus)}`}); }
+  // 超级杯资格：联赛冠军或国内杯冠军 → 下赛季揭幕战超级杯
+  if(rank===1 || G._wonCup){ const opp=divClubs(finishDiv).filter(c=>!c.you).sort((a,b)=>clubStr(b)-clubStr(a))[0]; G.superCup = opp? {opp:{name:opp.name, str:Math.round(clubStr(opp))}, played:false} : null; }
+  else G.superCup=null;
 
   recordSeasonScorer();   // 记录当季最佳射手（重置数据前）
   // 赛季末：你的球员靠每场比赛动态成长（matchGrowth），此处只老化 + 训练加成 + 兜底衰退；世界球员（无逐场模拟）整体结算
@@ -1069,8 +1072,9 @@ function endSeason(){
     const gap=p.potential-p.ovr;
     if(p.owned){
       const inT=G.training.includes(p.id);
-      if(inT && p.age<=27 && gap>0) p.ovr=clamp(p.ovr+rint(0,1)+(G.coachLevel>=2?1:0),48,99); // 训练额外加成
-      if(p.age>=31 && !inT && Math.random()<0.4) p.ovr=clamp(p.ovr-rint(0,1),42,99);          // 老将自然衰退
+      if(inT && p.age<=27 && gap>0) p.ovr=clamp(p.ovr+rint(0,1)+(G.coachLevel>=2?1:0)+(investLvl("training")>=2?1:0),48,99); // 训练额外加成（含训练基地）
+      if(investLvl("training") && p.age<=29 && gap>0 && Math.random()<0.28*investLvl("training")) p.ovr=clamp(p.ovr+1,48,99); // 训练基地：额外成长
+      if(p.age>=31 && !inT && Math.random()<0.4*(1-0.16*investLvl("training"))) p.ovr=clamp(p.ovr-rint(0,1),42,99);          // 老将衰退（训练基地减缓）
       if(inT && p.learnPos && p.pos!==p.learnPos){   // 训练改造位置：逐季提升，速度/上限取决于与现有位置的相似度
         if(!p.prof) p.prof={}; if(!Array.isArray(p.pos2)) p.pos2=[];
         const tgt=p.learnPos, aff=learnAff(p,tgt), cap=masteryCap(p,tgt);
@@ -1136,14 +1140,16 @@ function endSeason(){
   // 转会分期付款本季扣款
   if(Array.isArray(G.installments) && G.installments.length){ let paid=0; G.installments.forEach(it=>{ paid+=it.perSeason; it.seasonsLeft--; }); G.installments=G.installments.filter(it=>it.seasonsLeft>0); if(paid>0){ G.cash=round1(G.cash-paid); pushNews(`💳 转会分期付款本季支出 -${eur(round1(paid))}（尚余 ${G.installments.length} 笔）。`,"match"); } }
   repayDebtsSeason();   // 银行贷款本季还款
+  { const fi=investIncome(); if(fi>0){ G.cash=round1(G.cash+fi); pushNews(`💹 投资理财收益到账 +${eur(fi)}。`,"good"); } }   // 俱乐部投资被动收入
   genSponsorOffers();
   refreshStaffMarket();   // 新赛季教练市场刷新
   genJobOffers(rank);
-  // 转会窗口：一批自由球员进入市场（无转会费）
-  const faN=rint(4,7);
+  // 转会窗口：一批自由球员进入市场（无转会费）。球探网络越强，妖人越多越强
+  const sc=investLvl("scouting");
+  const faN=rint(4,7)+sc;
   for(let i=0;i<faN;i++){
     const veteran=Math.random()<0.5;
-    const p=makePlayer(pick(POS), veteran?-2:(Math.random()<0.3?rnd(2,7):0));
+    const p=makePlayer(pick(POS), veteran?-2:(Math.random()<(0.3+0.08*sc)?rnd(2,7+sc*2):0));
     if(veteran){ p.age=rint(30,35); p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult); p.scouted=true; }
     p.free=true; G.market.unshift(p);
   }
@@ -2118,7 +2124,7 @@ function brandValue(){   // 品牌价值/全球人气：随声望、球星、荣
   const rep=G.rep||50;
   const stars=[...(G.squad||[])].sort((a,b)=>b.ovr-a.ovr).slice(0,5).reduce((a,p)=>a+Math.max(0,p.ovr-72),0);
   const trophies=(G.honors||[]).length;
-  return clamp(Math.round(rep*0.55 + stars*1.4 + trophies*1.6 + (myDiv()===0?12:0)), 10, 100);
+  return clamp(Math.round(rep*0.55 + stars*1.4 + trophies*1.6 + (myDiv()===0?12:0) + investLvl("brand")*7), 10, 100);
 }
 function brandMult(){ return 0.6 + brandValue()/100*0.85; }   // 品牌系数 0.6~1.45
 function ensureSponsorSlots(){
@@ -2213,6 +2219,27 @@ function upgradeFacil(key){
   save(); render();
 }
 function commercialIncome(){ return round2((G.facil&&G.facil.commercial?G.facil.commercial:0)*0.4); } // €M/轮
+// ---------- 俱乐部长期投资（大额现金去向，永久被动收益） ----------
+const INVEST={
+  brand:    {name:"全球品牌推广", icon:"🌍", desc:"永久提升品牌价值，放大所有赞助/商业报价"},
+  training: {name:"训练基地",     icon:"🏞️", desc:"球员成长更快，老将衰退更慢"},
+  scouting: {name:"全球球探网络", icon:"🔭", desc:"转会市场涌现更多高潜力妖人"},
+  fund:     {name:"投资理财",     icon:"💹", desc:"闲置资金理财，每赛季稳定被动收入"},
+};
+const INVEST_KEYS=["brand","training","scouting","fund"];
+const INVEST_COST=[25,50,85,130];   // Lv 0→1,1→2,2→3,3→4
+function investLvl(k){ return (G.invest&&G.invest[k])||0; }
+function investCost(k){ const lv=investLvl(k); return lv<INVEST_COST.length?INVEST_COST[lv]:null; }
+function investIncome(){ return round1(investLvl("fund")*4.5); }   // €M/赛季 被动收入
+function upgradeInvest(k){
+  if(!INVEST[k]) return; const cost=investCost(k);
+  if(cost==null){ toast(`${INVEST[k].name} 已满级`); return; }
+  if(G.cash<cost){ toast("现金不足"); return; }
+  if(!G.invest) G.invest={brand:0,training:0,scouting:0,fund:0};
+  G.cash=round1(G.cash-cost); G.invest[k]=investLvl(k)+1;
+  pushNews(`🏗️ 俱乐部投资：${INVEST[k].name} 升至 Lv.${G.invest[k]}（耗资 ${eur(cost)}）。`,"good");
+  save(); render();
+}
 // ---------- 财务 / 银行贷款 ----------
 function estSeasonGate(){ if(!G.stadium) return 0; const homeGames=Math.floor((G.totalRounds||22)/2); const rate=attendanceRate(75); return round1(homeGames*G.stadium.capacity*rate*G.stadium.ticketPrice/1e6); }
 function annualRevenue(){ const perRound=sponsorIncome()+commercialIncome(); return round1(perRound*(G.totalRounds||22) + estSeasonGate() + 8); }   // 粗略年收入
@@ -2353,6 +2380,7 @@ function viewBusiness(){
     <div class="hint">票价越高单价越高、上座率越低；排名/状态/对手/信心都影响上座。主场联赛每场按「容量×上座率×票价」结算门票。</div>
     <button class="btn" style="margin-top:8px" onclick="expandStadium()" ${st.capacity>=85000?'disabled':''}>${st.capacity>=85000?'已达最大容量':`⬆ 扩建 +5000 座（${eur(expandCost())}）`}</button>`;
   const facilHTML=Object.keys(FACIL).map(k=>{ const F=FACIL[k]; const lv=(G.facil&&G.facil[k])||0; const cost=lv<4?facilCost(lv):null; return `<div class="negbox"><div class="l"><span>${F.icon} <b>${F.name}</b> <span class="hint">Lv.${lv}/4</span></span>${cost!=null?`<button class="btn sm" onclick="upgradeFacil('${k}')">升级（${eur(cost)}）</button>`:'<span class="ctr-tag" style="background:#3a3320;color:var(--gold)">满级</span>'}</div><div class="hint" style="margin-top:4px">${F.desc}${k==="commercial"&&lv?` · 当前 +${eur(commercialIncome())}/轮`:''}</div></div>`; }).join("");
+  const investHTML=INVEST_KEYS.map(k=>{ const I=INVEST[k]; const lv=investLvl(k); const cost=investCost(k); const cur = k==="brand"?`当前 +${lv*7} 品牌` : k==="fund"?`当前 +${eur(investIncome())}/赛季` : k==="scouting"?`当前妖人产出 +${lv}`:`当前成长加成 Lv.${lv}`; return `<div class="negbox"><div class="l"><span>${I.icon} <b>${I.name}</b> <span class="hint">Lv.${lv}/4</span></span>${cost!=null?`<button class="btn sm" onclick="upgradeInvest('${k}')">投资（${eur(cost)}）</button>`:'<span class="ctr-tag" style="background:#3a3320;color:var(--gold)">满级</span>'}</div><div class="hint" style="margin-top:4px">${I.desc}${lv?` · ${cur}`:''}</div></div>`; }).join("");
   return `
   <div class="panel"><h2>🏛️ 帅位 / 董事会</h2>
     <div class="squadsum">
@@ -2370,6 +2398,7 @@ function viewBusiness(){
   </div>
   <div class="panel"><h2>🏟️ 主场球场</h2>${stadiumHTML}</div>
   <div class="panel"><h2>🏗️ 俱乐部设施</h2>${facilHTML}</div>
+  <div class="panel"><h2>💼 俱乐部投资 <span class="hint">（大额长期投入，永久收益）</span></h2>${investHTML}</div>
   <div class="panel"><h2>📜 执教生涯</h2><div class="negbox">${careerHTML}</div></div>
   <div class="panel"><h2>📈 执教邀请（挖角）</h2>${jobs}</div>
   <div class="panel"><h2>💰 财务总览</h2>
@@ -2722,6 +2751,24 @@ function resolveCupMatch(c,f,mg,og,win){
   if(!c.done) toast(`🏆 国内杯 ${G.club} ${f.mg}-${f.og} ${f.opp}`);
   save(); render();
 }
+function playSuperCup(){
+  const sc=G.superCup; if(!sc||sc.played) return;
+  const r=teamRatings(); if(r.count!==11||!r.hasGK){ toast("先排好首发 11 人（含门将）"); switchTab("squad"); return; }
+  startMatch({
+    comp:`🛡️ 超级杯`, oppName:sc.opp.name, knockout:true, oppStr:sc.opp.str, myStr:()=>teamRatings().ovr, allowSub:true, allowTactic:true,
+    getXG:()=>{ const r=teamRatings(); const tm=tacticMods(r,sc.opp.str); let mxg=clamp((r.att*tm.att-sc.opp.str)/9+1.35,0.2,5.2), oxg=clamp((sc.opp.str-r.def*tm.def)/9+1.35,0.2,5.2); if((G.tactic||"平衡")==="高位压迫"){ mxg*=1.06; oxg*=1.10; } return {mxg,oxg}; },
+    onFinish:(mg,og,win)=>resolveSuperCup(mg,og,win)
+  });
+}
+function resolveSuperCup(mg,og,win){
+  const sc=G.superCup; if(!sc) return;
+  sc.played=true; sc.mg=mg; sc.og=og; sc.win=win;
+  recordMatch(mg,og,sc.opp.name);
+  matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg);
+  if(win){ const prize=6; G.cash=round1(G.cash+prize); G.rep=clamp((G.rep||50)+2,0,100); updateBoard(3); addHonor("超级杯 冠军"); pushNews(`🛡️ <b>超级杯冠军！</b>${G.club} ${mg}-${og} ${sc.opp.name}，奖金 +${eur(prize)}，声望提升。`,"good"); celebrate({trophy:"🛡️", title:"超级杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 揭幕之战夺冠`}); }
+  else { pushNews(`🛡️ 超级杯：${G.club} ${mg}-${og} ${sc.opp.name}，惜败屈居亚军。`,"bad"); }
+  save(); render();
+}
 function finishCup(champ){
   if(champ){ G._wonCup=true; addHonor("国内杯 冠军"); celebrate({trophy:"🏆", title:"国内杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 杯赛加冕`}); }
   const rep=champ?10:5, cash=champ?27:9;
@@ -2811,7 +2858,8 @@ function viewCalendar(){
     ${mids.length?`<div class="negbox">${mids.map(m=>`<div class="l"><span>${m}</span><span style="color:var(--accent)">穿插</span></div>`).join("")}</div>`:'<div class="hint">暂无（去「🌍洲际杯 / 🌐国家队」开启赛事；国内杯每季自动进行）</div>'}
   </div>
   <div class="panel"><h2>📋 接下来的联赛对手</h2><div class="negbox">${upcoming||'<div class="hint">本赛季联赛已结束</div>'}</div></div>
-  <div class="panel"><h2>🏆 国内杯</h2><div class="negbox">${cupHTML}</div>${G.cup&&G.cup.done?`<div class="hint">${G.cup.outcome}</div>`:""}</div>`;
+  <div class="panel"><h2>🏆 国内杯</h2><div class="negbox">${cupHTML}</div>${G.cup&&G.cup.done?`<div class="hint">${G.cup.outcome}</div>`:""}</div>
+  ${(G.superCup&&!G.superCup.played)?`<div class="panel" style="border-color:var(--gold)"><h2>🛡️ 超级杯（揭幕战）</h2><div class="hint" style="margin-bottom:6px">作为上赛季冠军，出战超级杯对阵 <b>${G.superCup.opp.name}</b>（实力 ${G.superCup.opp.str}）。赢球获得奖杯 + 奖金 + 声望。</div><button class="btn big" style="width:100%" onclick="playSuperCup()">⚔️ 出战超级杯</button></div>`:(G.superCup&&G.superCup.played?`<div class="panel"><h2>🛡️ 超级杯</h2><div class="hint">${G.superCup.win?'🏆 夺冠':'亚军'}：${G.club} ${G.superCup.mg}-${G.superCup.og} ${G.superCup.opp.name}</div></div>`:'')}`;
 }
 function viewNational2(){
   if(!G.national) G.national={nation:null,titles:0,tactic:"平衡",invites:[],comp:null,nextStage:"contQual",lastFreePick:-99};
@@ -3222,6 +3270,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!Array.isArray(G.career)) G.career=[{club:G.club, fromSeason:Math.max(1,(G.season||1)-(G.seasonsAtClub||1)+1)}];
   if(!G.stadium){ const me=(G.table.find(t=>t.you)||{}); const s=teamRatings().ovr||me.str||70; G.stadium={capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}; }
   if(!G.facil) G.facil={medical:0, commercial:0};
+  if(!G.invest) G.invest={brand:0,training:0,scouting:0,fund:0};
   if(!G.derby) G.derby={rival:null,w:0,d:0,l:0};
   if(G.goalRank==null) G.goalRank=5;
   if(!G.archetype) G.archetype="mid";
