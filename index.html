@@ -444,6 +444,11 @@ function expandWorld(){   // 老存档迁移 / 季初校验：补足每国每级
   });
   return added;
 }
+// 深度联赛：基准≥DEEP_BASE 的国家「顶级联赛(div0)」+ 各大洲代表 + 你所在国，生成真实阵容（可侦察、按潜力逐季发展）；其余联赛只用实力数值（省内存/存档）
+const DEEP_BASE=73;
+const DEEP_EXTRA=new Set(["摩洛哥","新西兰","美国","韩国"]);   // 保证各大洲都有真实阵容
+function isDeepCountry(country){ const W=WORLD_COUNTRIES.find(w=>w.n===country); return !!((W&&W.b>=DEEP_BASE)||DEEP_EXTRA.has(country)); }
+function ensureDeepSquads(){ (G.table||[]).forEach(c=>{ if(!c.you && c.div===0 && !c.squad && (isDeepCountry(c.country)||c.country===G.country)) ensureSquad(c); }); }
 function leagueClubs(country, div){ return G.table.filter(c=>c.country===country && c.div===div); }
 function divClubs(d){ return leagueClubs(G.country, d); }
 function divIdxs(d){ const a=[]; G.table.forEach((c,i)=>{ if(c.country===G.country && c.div===d) a.push(i); }); return a; }
@@ -572,6 +577,7 @@ function newGame(world, clubIdx, budget){
   };
   buildSchedules();
   divClubs(myD).forEach(ensureSquad);              // 同区对手生成完整阵容
+  ensureDeepSquads();                              // 顶级联赛(深度联赛)生成真实阵容
   startCup();
   if(G.conti.tier!=null) startConti();             // 有资格则自动加入洲际杯
   rivalClubs().forEach(c=>{ if(c.squad) c.str=round1(clubStr(c)); });
@@ -1265,6 +1271,7 @@ function endSeason(){
   { const ne=expandWorld(); if(ne>0) pushNews(`🌍 联赛扩容：新增 ${ne} 家俱乐部（每联赛 ${DIV_SIZE} 队 · ${DIV_NAMES.length} 级联赛金字塔），本赛季起生效。`,"good"); }
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
+  ensureDeepSquads();                     // 顶级联赛(深度联赛)真实阵容（含新扩容国家）
   runArmsRace();                          // 联赛对手按自身志向/转会窗自主补强（非自动追平你）
   ensureRival();                          // 升降级后校验/重选宿敌
   startCup(); G.midweekDone=false;
@@ -3648,6 +3655,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.conti && G.conti.tier!=null && !G.conti.comp) startConti();                                      // 老存档：洲际杯自动接上
   if(G.wcc && G.wcc.in && !G.wcc.comp) startWCC();                                                       // 老存档：世俱杯自动接上
   ensureRival();                                                                                          // 老存档：指定/校验宿敌
+  ensureDeepSquads();                                                                                     // 老存档：补齐顶级联赛真实阵容
   return true; } }catch(e){} return false; }
 function exportSave(){ const d=localStorage.getItem(SAVE_KEY)||JSON.stringify(G); if(navigator.clipboard){ navigator.clipboard.writeText(d).then(()=>toast("存档码已复制到剪贴板"),()=>importPrompt(d)); } else importPrompt(d); }
 function downloadSave(){
