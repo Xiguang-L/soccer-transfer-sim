@@ -2948,13 +2948,13 @@ function finishConti(c, champion){
   pushNews(`🌍 ${c.outcome}`,"good");
 }
 // ---------- 世界俱乐部杯（各大洲洲际冠军同场竞技） ----------
+function wccPool(){ return G.table.filter(c=>!c.you).sort((a,b)=>clubStr(b)-clubStr(a)); }
+function mkWCCFix(c, round, base){ return {opp:c.name, oppStr:clamp(Math.round((clubStr(c)+base)/2+rnd(-2,5)),62,96), round, played:false,mg:0,og:0,win:false,draw:false}; }
 function startWCC(){
-  const pool=G.table.filter(c=>!c.you).sort((a,b)=>clubStr(b)-clubStr(a));
-  if(!pool.length){ G.wcc.comp=null; return; }
-  const rounds=["八强","半决赛","决赛"];
-  const fixtures=rounds.map((r,i)=>{ const c=pool[Math.min(i*3, pool.length-1)]||pool[0]; return {opp:c.name, oppStr:clamp(Math.round((clubStr(c)+84)/2+rnd(-2,5)),62,95), round:r, played:false,mg:0,og:0,win:false}; });
-  G.wcc.comp={fixtures, idx:0, done:false, outcome:""};
-  pushNews(`🌎 世界俱乐部杯：作为洲际冠军，你获得参赛资格！将与各大洲顶级球队争夺世界之巅。`,"good");
+  const pool=wccPool().slice(0,40); if(!pool.length){ G.wcc.comp=null; return; }
+  const gp=[]; for(let i=0;i<3;i++){ const c=pool[rint(8,Math.min(34,pool.length-1))]||pick(pool); gp.push(mkWCCFix(c,"小组赛",78)); }   // 小组赛对手：世界中上游
+  G.wcc.comp={stage:'group', fixtures:gp, idx:0, done:false, outcome:"", adv:4};
+  pushNews(`🌎 世界俱乐部杯（32 队）：作为洲际冠军参赛！小组赛 3 场拿满 4 分出线，随后淘汰赛（十六强→八强→半决赛→决赛）与各大洲冠军争夺世界之巅。`,"good");
 }
 function playWCCMatch(){
   const c=G.wcc.comp; if(!c||c.done) return;
@@ -2967,15 +2967,25 @@ function playWCCMatch(){
   });
 }
 function resolveWCCMatch(c,f,mg,og,win){
-  f.played=true; f.mg=mg; f.og=og; recordMatch(mg,og,f.opp); matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); drainCondition(); f.win=win;   // 世俱杯计入出场/进球/助攻 + 体能消耗
-  if(win){ c.idx++; if(c.idx>=c.fixtures.length){ c.done=true; finishWCC(true); } }
-  else { c.done=true; finishWCC(false); }
+  f.played=true; f.mg=mg; f.og=og; recordMatch(mg,og,f.opp); matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); drainCondition();   // 世俱杯计入出场/进球/助攻 + 体能消耗
+  if(c.stage==='group'){
+    f.win=mg>og; f.draw=mg===og; c.idx++;
+    if(c.idx>=c.fixtures.length){
+      const pts=c.fixtures.reduce((a,x)=>a+(x.mg>x.og?3:x.mg===x.og?1:0),0);
+      if(pts>=(c.adv||4)){ c.stage='ko'; c.idx=0; const pool=wccPool(); c.fixtures=["十六强","八强","半决赛","决赛"].map((r,i)=>mkWCCFix(pool[Math.min(i*2,pool.length-1)]||pool[0], r, 85+i)); pushNews(`🌎 世俱杯：小组出线（${pts} 分），进入淘汰赛！`,"good"); }
+      else { c.done=true; finishWCC(false); }
+    }
+  } else {
+    f.win=win;
+    if(win){ c.idx++; if(c.idx>=c.fixtures.length){ c.done=true; finishWCC(true); } }
+    else { c.done=true; finishWCC(false); }
+  }
   if(!c.done) toast(`🌎 世俱杯 ${G.club} ${f.mg}-${f.og} ${f.opp}`);
   save(); render();
 }
 function finishWCC(champ){
-  const rep=champ?26:10, cash=champ?72:24;
-  const msg=champ?"世界俱乐部杯 夺冠 🌎🏆":`世俱杯 止步${(G.wcc.comp.fixtures[G.wcc.comp.idx]&&G.wcc.comp.fixtures[G.wcc.comp.idx].round)||"决赛"}`;
+  const c=G.wcc.comp, rep=champ?28:10, cash=champ?80:24;
+  const msg=champ?"世界俱乐部杯 夺冠 🌎🏆":(c&&c.stage==='group'?"世俱杯 小组赛出局":`世俱杯 止步${(c&&c.fixtures[c.idx]&&c.fixtures[c.idx].round)||"决赛"}`);
   if(champ){ G.wcc.titles=(G.wcc.titles||0)+1; addHonor("世界俱乐部杯 冠军"); celebrate({trophy:"🌎", title:"世界俱乐部杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 世界之巅！· 奖金 +${eur(cash)}`}); }
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
   G.wcc.comp.outcome=`${msg}（声望 +${rep}，奖金 +${eur(cash)}）`;
@@ -3011,7 +3021,7 @@ function wccPanel(){
   const w=G.wcc&&G.wcc.comp;
   let inner;
   if(w){
-    const rows=w.fixtures.map((f,i)=>{ const cur=(i===w.idx && !w.done && !f.played); const res=f.played?`<b>${f.mg}-${f.og}</b> ${f.win?'胜':'负'}`:(cur?'<span style="color:var(--accent)">下一场 ▶</span>':'未赛'); return `<div class="l"><span>${f.round} vs ${f.opp} (${f.oppStr})</span><span>${res}</span></div>`; }).join("");
+    const rows=w.fixtures.map((f,i)=>{ const cur=(i===w.idx && !w.done && !f.played); const res=f.played?`<b>${f.mg}-${f.og}</b> ${f.win?'胜':(f.draw?'平':'负')}`:(cur?'<span style="color:var(--accent)">下一场 ▶</span>':'未赛'); return `<div class="l"><span>${f.round} vs ${f.opp} (${f.oppStr})</span><span>${res}</span></div>`; }).join("");
     inner=`<div class="negbox">${rows}</div>`+(w.done?`<div class="hint" style="margin-top:8px">${w.outcome}</div>`:`<div class="hint" style="margin-top:8px">通过顶部「下一场」按钮进行。</div>`);
   } else {
     inner=`<div class="hint">未入围本届世俱杯。<b>夺得本洲洲际冠军</b>即可在下赛季入围，与各大洲顶级球队同场竞技。</div>`;
