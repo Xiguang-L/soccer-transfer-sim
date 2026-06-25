@@ -394,22 +394,34 @@ const ARCHETYPES = {
 };
 
 // ===== 联赛金字塔（D 阶段）=====
-const DIV_NAMES=["甲级联赛","乙级联赛"];
-const DIV_SIZE=10, PROMO=3, SQUAD_MAX=52;
+const DIV_NAMES=["甲级联赛","乙级联赛","丙级联赛"];
+const DIV_SIZE=18, PROMO=3, SQUAD_MAX=52;
 function squadCount(){ return G.squad.length + (Array.isArray(G.loans)?G.loans.length:0); } // 含租出，避免归队超员
 const CLUB_PRE=["北原","南海","东岭","西港","铁山","黑森","红河","青松","金狮","白鲨","狂风","巨岩","雷霆","苍鹰","怒涛","星辰","赤焰","寒霜","碧涛","飞龙","猎豹","海鸥","劲松","远征","雄狮","蓝鲸","赤龙","银翼","钢城","奥林","皇家","流浪者","联合","常胜","王朝","北辰","云岭","海港","烈日","苍穹","信天翁","开拓者","守望","破晓","磐石","旋风","极地","翡翠","琥珀","黑豹"];
 const CLUB_SUF=["FC","联","竞技","城","队","俱乐部","体育会","SC"];
 function genClubName(used){ let n,t=0; do{ n=pick(CLUB_PRE)+pick(CLUB_SUF); t++; }while(used.has(n)&&t<120); used.add(n); return n; }
 function mkClub(name, real, str, div, country, conf){ return {name, real, str:round1(clamp(str,50,90)), squad:null, tactic:pick(TACTIC_KEYS), country, conf, div, P:0,W:0,D:0,L:0,GF:0,GA:0,pts:0, you:false}; }
 function ensureSquad(c){ if(c && !c.you && !c.squad) c.squad=genRivalSquad(Math.round(c.str), NATIONS[c.country]?c.country:undefined); return c; }
+const DIV_BASE=[0,-9,-18];   // 各级联赛相对国家基准强度
 function buildWorld(){
   const clubs=[];
   WORLD_COUNTRIES.forEach(W=>{
     const cu=new Set();
-    while(clubs.filter(c=>c.country===W.n&&c.div===0).length<DIV_SIZE) clubs.push(mkClub(flagOf(W.n)+genClubName(cu), null, W.b+rnd(-6,8), 0, W.n, W.c));
-    while(clubs.filter(c=>c.country===W.n&&c.div===1).length<DIV_SIZE) clubs.push(mkClub(flagOf(W.n)+genClubName(cu), null, W.b-9+rnd(-7,5), 1, W.n, W.c));
+    for(let d=0; d<DIV_NAMES.length; d++){
+      while(clubs.filter(c=>c.country===W.n&&c.div===d).length<DIV_SIZE) clubs.push(mkClub(flagOf(W.n)+genClubName(cu), null, W.b+(DIV_BASE[d]||0)+rnd(-6,7), d, W.n, W.c));
+    }
   });
   return clubs;
+}
+function expandWorld(){   // 老存档迁移 / 季初校验：补足每国每级到 DIV_SIZE 队、补齐缺失级别（新增的丙级等）
+  let added=0;
+  WORLD_COUNTRIES.forEach(W=>{
+    const cu=new Set(G.table.filter(c=>c.country===W.n).map(c=>c.name));
+    for(let d=0; d<DIV_NAMES.length; d++){
+      while(G.table.filter(c=>c.country===W.n&&c.div===d).length<DIV_SIZE){ G.table.push(mkClub(flagOf(W.n)+genClubName(cu), null, W.b+(DIV_BASE[d]||0)+rnd(-6,7), d, W.n, W.c)); added++; }
+    }
+  });
+  return added;
 }
 function leagueClubs(country, div){ return G.table.filter(c=>c.country===country && c.div===div); }
 function divClubs(d){ return leagueClubs(G.country, d); }
@@ -1233,6 +1245,7 @@ function endSeason(){
   G.season++; G.round=1;
   pushNews(`✈️ 季前商业巡回赛开放：赛季初可在「📅 赛程日历」三选一，赚商业收入并备战。`,"match");
   G.table.forEach(t=>{t.P=t.W=t.D=t.L=t.GF=t.GA=t.pts=0;});
+  { const ne=expandWorld(); if(ne>0) pushNews(`🌍 联赛扩容：新增 ${ne} 家俱乐部（每联赛 ${DIV_SIZE} 队 · ${DIV_NAMES.length} 级联赛金字塔），本赛季起生效。`,"good"); }
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
   runArmsRace();                          // 军备竞赛：豪门追赶，保持挑战性
