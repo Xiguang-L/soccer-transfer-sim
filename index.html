@@ -1546,7 +1546,7 @@ function noteSigning(p,fee){ ensureRecords(); if(!G.records.recordSigning || fee
 function noteSale(p,fee){ ensureRecords(); if(!G.records.recordSale || fee>G.records.recordSale.fee) G.records.recordSale={name:p.name, fee:round1(fee), season:G.season, club:G.club}; }
 function recordSeasonScorer(){ ensureRecords(); const top=[...G.squad].filter(p=>p.gls).sort((a,b)=>b.gls-a.gls)[0]; if(top){ G.records.seasonScorers.unshift({season:G.season, name:top.name, gls:top.gls, ast:top.ast||0, club:G.club}); if(G.records.seasonScorers.length>40) G.records.seasonScorers.pop(); } }
 // ---------- 个人奖项：金球奖 / 金靴 / 年度最佳阵容（评选范围=你所在联赛，赛季末数据重置前计算） ----------
-function awEntry(e){ if(!e) return null; const p=e.p; return {name:p.name, club:e.club, nat:p.nat, pos:p.pos, ovr:p.ovr, gls:p.gls||0, ast:p.ast||0, you:!!e.you}; }
+function awEntry(e){ if(!e) return null; const p=e.p; return {id:p.id, name:p.name, club:e.club, nat:p.nat, pos:p.pos, ovr:p.ovr, gls:p.gls||0, ast:p.ast||0, you:!!e.you}; }
 function computeAwards(){
   ensureDyn(); const myD=myDiv(); const pool=[];
   (G.squad||[]).forEach(p=>pool.push({p, club:G.club, you:true}));
@@ -1655,10 +1655,11 @@ function viewHonors(){
   const hof=(G.hof||[]);
   const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${e.name}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">各项赛事（联赛+杯赛+洲际赛）累计 80+ 场 / 45+ 球 / 45+ 助（任一），或效力满 7 个有效赛季的球员，在退役或离队时入选名人堂。</div>';
   const aw=(G.awardsHist&&G.awardsHist[0]);
-  const awHTML = aw? `<div class="l"><span>🥇 金球奖</span><b style="color:var(--gold)">${aw.ballon.name}${aw.ballon.you?' ⭐':''} <span class="hint">${aw.ballon.club} · ${aw.ballon.ovr}</span></b></div>
-    <div class="l"><span>👟 金靴</span><b style="color:var(--gold)">${aw.boot.name}${aw.boot.you?' ⭐':''} <span class="hint">${aw.boot.club} · ${aw.boot.gls}球</span></b></div>
+  const awName=(o)=>o.id!=null?`<span class="lnk" onclick="openPlayer(${o.id})">${o.name}</span>`:o.name;
+  const awHTML = aw? `<div class="l"><span>🥇 金球奖</span><b style="color:var(--gold)">${awName(aw.ballon)}${aw.ballon.you?' ⭐':''} <span class="hint">${aw.ballon.club} · ${aw.ballon.ovr}</span></b></div>
+    <div class="l"><span>👟 金靴</span><b style="color:var(--gold)">${awName(aw.boot)}${aw.boot.you?' ⭐':''} <span class="hint">${aw.boot.club} · ${aw.boot.gls}球</span></b></div>
     <div class="hint" style="margin:6px 0 3px">⚽ 年度最佳阵容（S${aw.season}）：</div>
-    ${aw.tots.map(t=>`<div class="l"><span><span class="pos ${POS_LINE[t.pos]||''}" style="font-size:11px">${t.pos}</span> ${t.name}${t.you?' ⭐':''}</span><span class="hint">${t.club} · ${t.ovr}${t.gls?` · ⚽${t.gls}`:''}${t.ast?` · 🅰️${t.ast}`:''}</span></div>`).join("")}`
+    ${aw.tots.map(t=>`<div class="l"><span><span class="pos ${POS_LINE[t.pos]||''}" style="font-size:11px">${t.pos}</span> ${awName(t)}${t.you?' ⭐':''}</span><span class="hint">${t.club} · ${t.ovr}${t.gls?` · ⚽${t.gls}`:''}${t.ast?` · 🅰️${t.ast}`:''}</span></div>`).join("")}`
     : '<div class="hint">赛季结束后评选金球奖 / 金靴 / 年度最佳阵容（评选范围：你所在的联赛；⭐ = 你的球员）。</div>';
   return `<div class="panel" style="border-color:var(--gold)"><h2>🏆 王朝成就 <span class="hint">（王朝声望 ${dp} · 称号「${dynastyTitle(dp)}」· ${unlocked}/${ACHIEVEMENTS.length}）</span></h2>
     <div class="hint" style="margin-bottom:6px">达成里程碑累积王朝声望，解锁更高教头称号。</div>${achHTML}</div>
@@ -1903,7 +1904,7 @@ function viewRivals(){
   </div>`;
 }
 function viewScout(){
-  const queue=G.scoutQueue.map(s=>`<span class="scoutslot">🔭 ${s.name} · ${s.roundsLeft}轮后出报告</span>`).join("")||`<span class="hint">暂无球探任务</span>`;
+  const queue=G.scoutQueue.map(s=>`<span class="scoutslot">🔭 <span class="lnk" onclick="openPlayer(${s.id})">${s.name}</span> · ${s.roundsLeft}轮后出报告</span>`).join("")||`<span class="hint">暂无球探任务</span>`;
   const free=G.scoutCapacity-G.scoutQueue.length;
   // 推荐考察：市场里未侦察、年轻、估计潜力高的
   const recs=G.market.filter(p=>!p.scouted&&p.age<=23).sort((a,b)=>b.potEst-a.potEst).slice(0,8);
@@ -2511,7 +2512,7 @@ function viewBusiness(){
   const bs=boardStatus(); const b=Math.round(G.board==null?60:G.board);
   const careerHTML=(G.career||[]).map((c,i)=>{ const to=(G.career[i+1]?G.career[i+1].fromSeason-1:G.season); return `<div class="l"><span>🏛️ ${c.club}</span><span class="hint">S${c.fromSeason}–S${to}</span></div>`; }).join("")||`<div class="hint">—</div>`;
   const unhappy=G.squad.filter(p=>(p.morale==null?70:p.morale)<35).sort((a,b)=>(a.morale||0)-(b.morale||0));
-  const moraleHTML=unhappy.length? unhappy.slice(0,6).map(p=>`<div class="l"><span>${moraleEmoji(p)} ${p.name}${p.wantOut?' <span class="ctr-tag" style="background:#3a2030;color:#ff9bb0">要求转会</span>':''}</span><span class="hint">士气 ${Math.round(p.morale)} · 多出场/胜利可回升</span></div>`).join("") : `<div class="hint">更衣室氛围良好，无人闹情绪 👍</div>`;
+  const moraleHTML=unhappy.length? unhappy.slice(0,6).map(p=>`<div class="l"><span>${moraleEmoji(p)} <span class="lnk" onclick="openPlayer(${p.id})">${p.name}</span>${p.wantOut?' <span class="ctr-tag" style="background:#3a2030;color:#ff9bb0">要求转会</span>':''}</span><span class="hint">士气 ${Math.round(p.morale)} · 多出场/胜利可回升</span></div>`).join("") : `<div class="hint">更衣室氛围良好，无人闹情绪 👍</div>`;
   const st=G.stadium||{capacity:10000,ticketPrice:25,lastAtt:0,lastGate:0,lastRate:0};
   const estAtt=Math.round(st.capacity*attendanceRate(75)), estGate=round1(estAtt*st.ticketPrice/1e6);
   const fs=finSummary();
