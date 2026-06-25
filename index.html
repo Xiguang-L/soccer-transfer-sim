@@ -534,6 +534,7 @@ function newGame(world, clubIdx, budget){
     board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
     stadium:{capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}, facil:{medical:0, commercial:0},
     records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[], derby:{rival:null,w:0,d:0,l:0}, invest:{brand:0,training:0,scouting:0,fund:0},
+    dyn:{league:0,cup:0,superCup:0,streak:0,bestStreak:0,treble:false,double:false,invincible:false,lastGF:0,lastGA:0,seasons:0}, achievements:{},
     lastWageBill:0, finished:false,
   };
   buildSchedules();
@@ -1064,6 +1065,11 @@ function endSeason(){
   // 超级杯资格：联赛冠军或国内杯冠军 → 下赛季揭幕战超级杯
   if(rank===1 || G._wonCup){ const opp=divClubs(finishDiv).filter(c=>!c.you).sort((a,b)=>clubStr(b)-clubStr(a))[0]; G.superCup = opp? {opp:{name:opp.name, str:Math.round(clubStr(opp))}, played:false} : null; }
   else G.superCup=null;
+  // 王朝成就统计（在表格重置/各冠军标记清除前）
+  ensureDyn();
+  const _me=sorted.find(t=>t.you); if(_me){ G.dyn.lastGF=_me.GF||0; G.dyn.lastGA=_me.GA||0; } G.dyn.seasons++;
+  if(rank===1){ G.dyn.league++; G.dyn.streak++; G.dyn.bestStreak=Math.max(G.dyn.bestStreak||0,G.dyn.streak); if(_me&&(_me.L||0)===0) G.dyn.invincible=true; if(G._wonCup) G.dyn.double=true; if(G._wonCup && G.conti && G.conti.wonTier!=null) G.dyn.treble=true; }
+  else G.dyn.streak=0;
 
   recordSeasonScorer();   // 记录当季最佳射手（重置数据前）
   // 赛季末：你的球员靠每场比赛动态成长（matchGrowth），此处只老化 + 训练加成 + 兜底衰退；世界球员（无逐场模拟）整体结算
@@ -1170,6 +1176,7 @@ function endSeason(){
   if(G.wcc && G.wcc.in) startWCC();                                     // 世俱杯自动加入当季赛程
   if(G.national && G.national.nation){ G.national.comp=null; startStage(G.national.nextStage||"contQual"); } // 国家队赛事自动开始
   G.leagueViewDiv=myDiv();
+  evalAchievements(true);                 // 结算王朝成就/里程碑
   if(G.board<=10) getSacked();           // 赛季考核不过关 → 解雇（须接手新球队继续生涯）
   else showSeasonModal(rank,bonus);
 }
@@ -1505,7 +1512,49 @@ function retirePlayer(p){
   untrain(p.id);
   pushNews(`👴 <b>${p.name}</b>（${p.age}岁）宣布退役，结束在 ${G.club} 的职业生涯。`,"match");
 }
+// ---------- 王朝成就 / 里程碑 ----------
+const TIER_PTS={bronze:1,silver:2,gold:4,legend:8};
+const TIER_C={bronze:"#c08457",silver:"#b8c0c8",gold:"var(--gold)",legend:"#d8a8ff"};
+const ACHIEVEMENTS=[
+  {id:'firstLeague',n:'首冠',i:'🥇',t:'bronze',d:'首夺联赛冠军',done:g=>g.dyn.league>=1},
+  {id:'cup1',n:'杯赛新贵',i:'🥈',t:'bronze',d:'首夺国内杯',done:g=>g.dyn.cup>=1},
+  {id:'superCup',n:'揭幕战王者',i:'🛡️',t:'bronze',d:'夺得超级杯',done:g=>g.dyn.superCup>=1},
+  {id:'league3',n:'三连霸',i:'👑',t:'gold',d:'联赛三连冠',done:g=>g.dyn.bestStreak>=3},
+  {id:'league5',n:'豪门底蕴',i:'🏆',t:'gold',d:'累计 5 座联赛冠军',done:g=>g.dyn.league>=5},
+  {id:'league10',n:'王朝缔造',i:'🏰',t:'legend',d:'累计 10 座联赛冠军',done:g=>g.dyn.league>=10},
+  {id:'double',n:'国内双冠',i:'🎖️',t:'gold',d:'同赛季 联赛 + 国内杯',done:g=>g.dyn.double},
+  {id:'conti',n:'称霸洲际',i:'🌍',t:'gold',d:'夺得洲际赛事冠军',done:g=>!!(g.conti&&g.conti.titles>=1)},
+  {id:'treble',n:'三冠王',i:'✨',t:'legend',d:'同赛季 联赛 + 国内杯 + 洲际',done:g=>g.dyn.treble},
+  {id:'wcc',n:'世界之巅',i:'🌎',t:'legend',d:'夺得世界俱乐部杯',done:g=>!!(g.wcc&&g.wcc.titles>=1)},
+  {id:'grandSlam',n:'大满贯',i:'💎',t:'legend',d:'生涯集齐 联赛/国内杯/洲际/超级杯/世俱杯',done:g=>g.dyn.league>=1&&g.dyn.cup>=1&&g.dyn.superCup>=1&&!!(g.conti&&g.conti.titles>=1)&&!!(g.wcc&&g.wcc.titles>=1)},
+  {id:'invincible',n:'不败之师',i:'⚔️',t:'legend',d:'一个联赛赛季零失利',done:g=>g.dyn.invincible},
+  {id:'goalFest',n:'摧枯拉朽',i:'🔥',t:'silver',d:'单季联赛打进 80+ 球',done:g=>g.dyn.lastGF>=80},
+  {id:'ironDef',n:'铜墙铁壁',i:'🧱',t:'silver',d:'单季联赛失球少于 22',done:g=>g.dyn.seasons>=1&&g.dyn.lastGA<22},
+  {id:'superstar',n:'巨星缔造',i:'⭐',t:'gold',d:'拥有一名 90+ 评分球员',done:g=>(g.squad||[]).some(p=>p.ovr>=90)},
+  {id:'homegrown',n:'青训瑰宝',i:'🌱',t:'silver',d:'自家青训球员评分达 85+',done:g=>(g.squad||[]).some(p=>p.homegrown&&p.ovr>=85)},
+  {id:'hof5',n:'群星璀璨',i:'🏛️',t:'gold',d:'5 名球员入选名人堂',done:g=>(g.hof||[]).length>=5},
+  {id:'rich',n:'富甲一方',i:'💰',t:'silver',d:'净资产突破 €500M',done:g=>networth()>=500},
+  {id:'brand100',n:'全球品牌',i:'📣',t:'gold',d:'品牌价值达到满值 100',done:g=>brandValue()>=100},
+  {id:'loyal10',n:'十年功勋',i:'🤝',t:'gold',d:'在同一俱乐部执教满 10 季',done:g=>(g.seasonsAtClub||1)>=10},
+  {id:'longevity',n:'常青教头',i:'📅',t:'silver',d:'执教生涯满 15 季',done:g=>(g.season||1)>=15},
+];
+function ensureDyn(){
+  if(!G.dyn){ G.dyn={league:0,cup:0,superCup:0,streak:0,bestStreak:0,treble:false,double:false,invincible:false,lastGF:0,lastGA:0,seasons:0};
+    const hon=G.honors||[];   // 老存档：从历史荣誉回填冠军数（甲/乙级联赛标题均含「联赛」）
+    const ls=hon.filter(e=>e.title&&e.title.includes("联赛")).map(e=>e.season).sort((a,b)=>a-b);
+    G.dyn.league=ls.length; G.dyn.cup=hon.filter(e=>e.title==="国内杯 冠军").length; G.dyn.superCup=hon.filter(e=>e.title==="超级杯 冠军").length;
+    let best=0,run=0,prev=null; ls.forEach(s=>{ run=(prev!=null&&s===prev+1)?run+1:1; if(run>best)best=run; prev=s; }); G.dyn.bestStreak=best;
+    G.dyn.double=ls.some(s=>hon.some(e=>e.title==="国内杯 冠军"&&e.season===s));
+  }
+  if(!G.achievements) G.achievements={};
+}
+function evalAchievements(announce){ ensureDyn(); ACHIEVEMENTS.forEach(a=>{ if(G.achievements[a.id]) return; let ok=false; try{ ok=a.done(G); }catch(e){} if(ok){ G.achievements[a.id]={season:G.season}; if(announce) pushNews(`🏅 解锁王朝成就：<b>${a.n}</b> — ${a.d}（王朝声望 +${TIER_PTS[a.t]}）`,"good"); } }); }
+function dynastyPrestige(){ ensureDyn(); return ACHIEVEMENTS.reduce((s,a)=>s+(G.achievements[a.id]?TIER_PTS[a.t]:0),0); }
+function dynastyTitle(p){ return p>=80?"王朝缔造者":p>=55?"传奇教头":p>=30?"豪门主帅":p>=15?"一方名帅":p>=5?"崭露头角":"新秀教练"; }
 function viewHonors(){
+  evalAchievements(false);
+  const dp=dynastyPrestige(), unlocked=Object.keys(G.achievements||{}).length;
+  const achHTML=ACHIEVEMENTS.map(a=>{ const u=G.achievements[a.id]; return `<div class="negbox" style="${u?'':'opacity:0.5'}"><div class="l"><span>${a.i} <b style="color:${u?TIER_C[a.t]:'var(--dim)'}">${a.n}</b> ${u?'':'🔒'}</span><span class="hint">${u?`S${u.season} 达成`:`+${TIER_PTS[a.t]}`}</span></div><div class="hint" style="margin-top:3px">${a.d}</div></div>`; }).join("");
   const h=G.honors||[];
   const counts={}; h.forEach(e=>counts[e.title]=(counts[e.title]||0)+1);
   const summary=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).map(t=>`<div class="l"><span>${t}</span><b style="color:var(--gold)">${counts[t]} 次</b></div>`).join("")||'<div class="hint">还没有冠军——带队夺冠后会记录在此。</div>';
@@ -1519,7 +1568,9 @@ function viewHonors(){
   const scorers=(rec.seasonScorers||[]).slice(0,12).map(s=>`<div class="l"><span>S${s.season} · ${s.name}</span><b>${s.gls} 球${s.ast?` · ${s.ast} 助`:''}</b></div>`).join("")||'<div class="hint">赛季结束后记录当季最佳射手</div>';
   const hof=(G.hof||[]);
   const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${e.name}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">各项赛事（联赛+杯赛+洲际赛）累计 80+ 场 / 45+ 球 / 45+ 助（任一），或效力满 7 个有效赛季的球员，在退役或离队时入选名人堂。</div>';
-  return `<div class="panel"><h2>🏅 经理生涯荣誉 <span class="hint">（共 ${h.length} 座冠军）</span></h2>
+  return `<div class="panel" style="border-color:var(--gold)"><h2>🏆 王朝成就 <span class="hint">（王朝声望 ${dp} · 称号「${dynastyTitle(dp)}」· ${unlocked}/${ACHIEVEMENTS.length}）</span></h2>
+    <div class="hint" style="margin-bottom:6px">达成里程碑累积王朝声望，解锁更高教头称号。</div>${achHTML}</div>
+  <div class="panel"><h2>🏅 经理生涯荣誉 <span class="hint">（共 ${h.length} 座冠军）</span></h2>
     <div class="negbox">${summary}</div></div>
   <div class="panel"><h2>📜 夺冠记录（赛季 · 球队 · 奖项）</h2><div class="negbox">${list}</div></div>
   <div class="panel"><h2>📊 队史纪录 <span class="hint">（${G.club}）</span></h2><div class="negbox">${recHTML}</div></div>
@@ -2765,12 +2816,13 @@ function resolveSuperCup(mg,og,win){
   sc.played=true; sc.mg=mg; sc.og=og; sc.win=win;
   recordMatch(mg,og,sc.opp.name);
   matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg);
-  if(win){ const prize=6; G.cash=round1(G.cash+prize); G.rep=clamp((G.rep||50)+2,0,100); updateBoard(3); addHonor("超级杯 冠军"); pushNews(`🛡️ <b>超级杯冠军！</b>${G.club} ${mg}-${og} ${sc.opp.name}，奖金 +${eur(prize)}，声望提升。`,"good"); celebrate({trophy:"🛡️", title:"超级杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 揭幕之战夺冠`}); }
+  if(win){ const prize=6; G.cash=round1(G.cash+prize); G.rep=clamp((G.rep||50)+2,0,100); updateBoard(3); ensureDyn(); G.dyn.superCup++; addHonor("超级杯 冠军"); pushNews(`🛡️ <b>超级杯冠军！</b>${G.club} ${mg}-${og} ${sc.opp.name}，奖金 +${eur(prize)}，声望提升。`,"good"); celebrate({trophy:"🛡️", title:"超级杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 揭幕之战夺冠`}); }
   else { pushNews(`🛡️ 超级杯：${G.club} ${mg}-${og} ${sc.opp.name}，惜败屈居亚军。`,"bad"); }
+  evalAchievements(true);
   save(); render();
 }
 function finishCup(champ){
-  if(champ){ G._wonCup=true; addHonor("国内杯 冠军"); celebrate({trophy:"🏆", title:"国内杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 杯赛加冕`}); }
+  if(champ){ G._wonCup=true; ensureDyn(); G.dyn.cup++; addHonor("国内杯 冠军"); celebrate({trophy:"🏆", title:"国内杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 杯赛加冕`}); }
   const rep=champ?10:5, cash=champ?27:9;
   const msg=champ?"国内杯 夺冠 🏆":`国内杯 止步${(G.cup.fixtures[G.cup.idx]&&G.cup.fixtures[G.cup.idx].round)||"决赛"}`;
   G.rep=clamp((G.rep||50)+rep,0,100); G.cash=round1(G.cash+cash);
@@ -3271,6 +3323,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(!G.stadium){ const me=(G.table.find(t=>t.you)||{}); const s=teamRatings().ovr||me.str||70; G.stadium={capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}; }
   if(!G.facil) G.facil={medical:0, commercial:0};
   if(!G.invest) G.invest={brand:0,training:0,scouting:0,fund:0};
+  ensureDyn();   // 王朝成就/里程碑状态
   if(!G.derby) G.derby={rival:null,w:0,d:0,l:0};
   if(G.goalRank==null) G.goalRank=5;
   if(!G.archetype) G.archetype="mid";
