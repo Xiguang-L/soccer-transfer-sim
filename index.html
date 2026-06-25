@@ -355,6 +355,17 @@ const NATIONS_EXTRA = {
   "乌兹别克斯坦":{flag:"🇺🇿",w:2,pool:"mideast"}, "泰国":{flag:"🇹🇭",w:2,pool:"seAsia"},
   "越南":{flag:"🇻🇳",w:2,pool:"seAsia"}, "印度尼西亚":{flag:"🇮🇩",w:2,pool:"seAsia"},
   "印度":{flag:"🇮🇳",w:2,pool:"southAsia"}, "新西兰":{flag:"🇳🇿",w:2,pool:"oceania"},
+  "苏格兰":{flag:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",w:3,pool:"britIsles"}, "威尔士":{flag:"🏴󠁧󠁢󠁷󠁬󠁳󠁿",w:2,pool:"britIsles"}, "罗马尼亚":{flag:"🇷🇴",w:3,pool:"eastEurope"}, "匈牙利":{flag:"🇭🇺",w:3,pool:"eastEurope"},
+  "斯洛伐克":{flag:"🇸🇰",w:3,pool:"eastEurope"}, "斯洛文尼亚":{flag:"🇸🇮",w:3,pool:"balkan"}, "保加利亚":{flag:"🇧🇬",w:2,pool:"eastEurope"}, "北马其顿":{flag:"🇲🇰",w:2,pool:"balkan"},
+  "阿尔巴尼亚":{flag:"🇦🇱",w:2,pool:"balkan"}, "波黑":{flag:"🇧🇦",w:3,pool:"balkan"}, "芬兰":{flag:"🇫🇮",w:3,pool:"nordic"}, "冰岛":{flag:"🇮🇸",w:2,pool:"nordic"},
+  "以色列":{flag:"🇮🇱",w:3,pool:"mideast"}, "塞浦路斯":{flag:"🇨🇾",w:2,pool:"balkan"}, "阿塞拜疆":{flag:"🇦🇿",w:2,pool:"mideast"}, "哈萨克斯坦":{flag:"🇰🇿",w:2,pool:"eastEurope"}, "格鲁吉亚":{flag:"🇬🇪",w:3,pool:"eastEurope"},
+  "委内瑞拉":{flag:"🇻🇪",w:3,pool:"latin"}, "玻利维亚":{flag:"🇧🇴",w:2,pool:"latin"},
+  "巴林":{flag:"🇧🇭",w:2,pool:"mideast"}, "阿曼":{flag:"🇴🇲",w:2,pool:"mideast"}, "约旦":{flag:"🇯🇴",w:2,pool:"mideast"}, "科威特":{flag:"🇰🇼",w:2,pool:"mideast"}, "叙利亚":{flag:"🇸🇾",w:2,pool:"mideast"}, "黎巴嫩":{flag:"🇱🇧",w:2,pool:"mideast"},
+  "马来西亚":{flag:"🇲🇾",w:2,pool:"seAsia"}, "新加坡":{flag:"🇸🇬",w:2,pool:"seAsia"}, "菲律宾":{flag:"🇵🇭",w:2,pool:"seAsia"}, "中国香港":{flag:"🇭🇰",w:2,pool:"china"}, "塔吉克斯坦":{flag:"🇹🇯",w:2,pool:"mideast"}, "吉尔吉斯斯坦":{flag:"🇰🇬",w:2,pool:"mideast"},
+  "洪都拉斯":{flag:"🇭🇳",w:3,pool:"latin"}, "巴拿马":{flag:"🇵🇦",w:3,pool:"latin"}, "萨尔瓦多":{flag:"🇸🇻",w:2,pool:"latin"}, "牙买加":{flag:"🇯🇲",w:3,pool:"usa"}, "特立尼达和多巴哥":{flag:"🇹🇹",w:2,pool:"usa"}, "危地马拉":{flag:"🇬🇹",w:2,pool:"latin"}, "海地":{flag:"🇭🇹",w:2,pool:"latin"}, "古巴":{flag:"🇨🇺",w:2,pool:"latin"},
+  "刚果民主共和国":{flag:"🇨🇩",w:4,pool:"westAfrica"}, "几内亚":{flag:"🇬🇳",w:3,pool:"westAfrica"}, "布基纳法索":{flag:"🇧🇫",w:3,pool:"westAfrica"}, "赞比亚":{flag:"🇿🇲",w:2,pool:"westAfrica"}, "安哥拉":{flag:"🇦🇴",w:2,pool:"westAfrica"}, "佛得角":{flag:"🇨🇻",w:3,pool:"westAfrica"},
+  "乌干达":{flag:"🇺🇬",w:2,pool:"westAfrica"}, "肯尼亚":{flag:"🇰🇪",w:2,pool:"westAfrica"}, "加蓬":{flag:"🇬🇦",w:3,pool:"westAfrica"}, "贝宁":{flag:"🇧🇯",w:2,pool:"westAfrica"}, "多哥":{flag:"🇹🇬",w:2,pool:"westAfrica"}, "利比亚":{flag:"🇱🇾",w:2,pool:"northAfrica"},
+  "斐济":{flag:"🇫🇯",w:2,pool:"oceania"}, "新喀里多尼亚":{flag:"🇳🇨",w:2,pool:"oceania"}, "塔希提":{flag:"🇵🇫",w:2,pool:"oceania"}, "所罗门群岛":{flag:"🇸🇧",w:2,pool:"oceania"}, "瓦努阿图":{flag:"🇻🇺",w:2,pool:"oceania"}, "巴布亚新几内亚":{flag:"🇵🇬",w:2,pool:"oceania"},
 };
 Object.assign(NATIONS, NATIONS_EXTRA);
 const NAT_KEYS = Object.keys(NATIONS);
@@ -385,6 +396,16 @@ const WORLD_COUNTRIES=[
   {n:"阿尔及利亚",c:"非洲",b:69},{n:"加纳",c:"非洲",b:67},{n:"喀麦隆",c:"非洲",b:68},{n:"科特迪瓦",c:"非洲",b:68},
   {n:"突尼斯",c:"非洲",b:67},{n:"马里",c:"非洲",b:64},{n:"南非",c:"非洲",b:62},
   {n:"新西兰",c:"大洋洲",b:58},
+  {n:"苏格兰",c:"欧洲",b:67},{n:"罗马尼亚",c:"欧洲",b:65},{n:"匈牙利",c:"欧洲",b:64},{n:"斯洛伐克",c:"欧洲",b:62},{n:"斯洛文尼亚",c:"欧洲",b:63},{n:"保加利亚",c:"欧洲",b:61},
+  {n:"北马其顿",c:"欧洲",b:60},{n:"阿尔巴尼亚",c:"欧洲",b:60},{n:"波黑",c:"欧洲",b:62},{n:"芬兰",c:"欧洲",b:61},{n:"冰岛",c:"欧洲",b:60},{n:"威尔士",c:"欧洲",b:60},
+  {n:"以色列",c:"欧洲",b:63},{n:"塞浦路斯",c:"欧洲",b:60},{n:"阿塞拜疆",c:"欧洲",b:58},{n:"哈萨克斯坦",c:"欧洲",b:58},{n:"格鲁吉亚",c:"欧洲",b:61},
+  {n:"委内瑞拉",c:"南美",b:64},{n:"玻利维亚",c:"南美",b:60},
+  {n:"巴林",c:"亚洲",b:60},{n:"阿曼",c:"亚洲",b:60},{n:"约旦",c:"亚洲",b:61},{n:"科威特",c:"亚洲",b:59},{n:"叙利亚",c:"亚洲",b:60},{n:"黎巴嫩",c:"亚洲",b:58},
+  {n:"马来西亚",c:"亚洲",b:58},{n:"新加坡",c:"亚洲",b:57},{n:"菲律宾",c:"亚洲",b:58},{n:"中国香港",c:"亚洲",b:57},{n:"塔吉克斯坦",c:"亚洲",b:58},{n:"吉尔吉斯斯坦",c:"亚洲",b:57},
+  {n:"洪都拉斯",c:"中北美",b:62},{n:"巴拿马",c:"中北美",b:62},{n:"萨尔瓦多",c:"中北美",b:59},{n:"牙买加",c:"中北美",b:63},{n:"特立尼达和多巴哥",c:"中北美",b:60},{n:"危地马拉",c:"中北美",b:59},{n:"海地",c:"中北美",b:60},{n:"古巴",c:"中北美",b:57},
+  {n:"刚果民主共和国",c:"非洲",b:65},{n:"几内亚",c:"非洲",b:64},{n:"布基纳法索",c:"非洲",b:64},{n:"赞比亚",c:"非洲",b:60},{n:"安哥拉",c:"非洲",b:60},{n:"佛得角",c:"非洲",b:62},
+  {n:"乌干达",c:"非洲",b:58},{n:"肯尼亚",c:"非洲",b:58},{n:"加蓬",c:"非洲",b:61},{n:"贝宁",c:"非洲",b:60},{n:"多哥",c:"非洲",b:59},{n:"利比亚",c:"非洲",b:58},
+  {n:"斐济",c:"大洋洲",b:55},{n:"新喀里多尼亚",c:"大洋洲",b:54},{n:"塔希提",c:"大洋洲",b:53},{n:"所罗门群岛",c:"大洋洲",b:53},{n:"瓦努阿图",c:"大洋洲",b:52},{n:"巴布亚新几内亚",c:"大洋洲",b:52},
 ];
 // 开局俱乐部类型（决定初始阵容强度 / 建议资金 / 赛季目标）
 const ARCHETYPES = {
