@@ -821,7 +821,7 @@ function boostClub(c, intensity){
     star.potential=clamp(star.ovr + (star.age<=21?rint(3,8):star.age<=24?rint(1,4):0), star.ovr, 99);
     star.scouted=true; star.value=round1(fairValue(star.ovr,star.age)*FORMS[star.formIdx].mult);
     c.squad.push(star); added++;
-    if(c.squad.length>25){ c.squad.sort((a,b)=>b.ovr-a.ovr); c.squad.pop(); }   // 注册名额满 → 卖掉最弱（以卖养买）
+    if(c.squad.length>SQUAD_MAX){ c.squad.sort((a,b)=>b.ovr-a.ovr); c.squad.pop(); }   // 阵容达上限(52，与玩家一致) → 卖掉最弱（以卖养买）
   }
   // 2) 内部培养：有潜力空间的球员朝「各自潜力」成长，速度视天赋/年龄而定（到顶不再涨）
   c.squad.forEach(p=>{
