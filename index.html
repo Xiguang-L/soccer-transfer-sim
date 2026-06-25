@@ -1473,7 +1473,7 @@ function noteSigning(p,fee){ ensureRecords(); if(!G.records.recordSigning || fee
 function noteSale(p,fee){ ensureRecords(); if(!G.records.recordSale || fee>G.records.recordSale.fee) G.records.recordSale={name:p.name, fee:round1(fee), season:G.season, club:G.club}; }
 function recordSeasonScorer(){ ensureRecords(); const top=[...G.squad].filter(p=>p.gls).sort((a,b)=>b.gls-a.gls)[0]; if(top){ G.records.seasonScorers.unshift({season:G.season, name:top.name, gls:top.gls, ast:top.ast||0, club:G.club}); if(G.records.seasonScorers.length>40) G.records.seasonScorers.pop(); } }
 function hofStats(p){ return {apps:(p.clubApps||0)+(p.apps||0), gls:(p.clubGls||0)+(p.gls||0), ast:(p.clubAst||0)+(p.ast||0)}; }
-function hofQualify(p){ const s=hofStats(p); return s.apps>=25 || s.gls>=18 || s.ast>=20 || (p.clubSeasons||0)>=5; } // 出场/进球/助攻 任一达标，或效力满5个有效赛季(队史功勋)
+function hofQualify(p){ const s=hofStats(p); return s.apps>=45 || s.gls>=30 || s.ast>=30 || (p.clubSeasons||0)>=6; } // 出场/进球/助攻 任一达标，或效力满6个有效赛季(队史功勋)
 function inductHOF(p, retired, clubName){
   ensureRecords(); if(p._hof || !hofQualify(p)) return;
   const club=clubName||G.club;
@@ -1512,7 +1512,7 @@ function viewHonors(){
     recRow("💰 最贵卖出", rec.recordSale?`${rec.recordSale.name} · ${eur(rec.recordSale.fee)}（S${rec.recordSale.season}）`:"—");
   const scorers=(rec.seasonScorers||[]).slice(0,12).map(s=>`<div class="l"><span>S${s.season} · ${s.name}</span><b>${s.gls} 球${s.ast?` · ${s.ast} 助`:''}</b></div>`).join("")||'<div class="hint">赛季结束后记录当季最佳射手</div>';
   const hof=(G.hof||[]);
-  const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${e.name}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">为球队效力 30+ 场 / 18+ 球 / 20+ 助 的球员，在退役或离队时入选名人堂。</div>';
+  const hofHTML=hof.length? hof.map(e=>`<div class="negbox"><div class="l"><span><b>${NATIONS[e.nat]?NATIONS[e.nat].flag:""} ${e.name}</b> <span class="pos ${POS_LINE[e.pos]||''}" style="font-size:11px">${e.pos}</span> ${(e.traits||[]).map(t=>TRAITS[t]?TRAITS[t].icon:'').join('')}</span><span class="hint">${e.retired?'退役':'传奇'} · S${e.season}</span></div><div class="hint" style="margin-top:3px">${e.club} · ${e.seasons}季 · ${e.apps}场 · ⚽${e.gls} · 🅰️${e.ast}</div></div>`).join("") : '<div class="hint">为球队贡献 45+ 场 / 30+ 球 / 30+ 助（任一），或效力满 6 个有效赛季的球员，在退役或离队时入选名人堂。</div>';
   return `<div class="panel"><h2>🏅 经理生涯荣誉 <span class="hint">（共 ${h.length} 座冠军）</span></h2>
     <div class="negbox">${summary}</div></div>
   <div class="panel"><h2>📜 夺冠记录（赛季 · 球队 · 奖项）</h2><div class="negbox">${list}</div></div>
