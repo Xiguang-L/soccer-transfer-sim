@@ -1226,7 +1226,9 @@ function endSeason(){
   if(G.conti){ let nt=qualifyTier(rank, finishDiv); if(G.conti.wonTier!=null) nt=0; /* 卫冕：洲际冠军下赛季继续顶级洲际赛事 */ G.conti.tier=nt; G.conti.wonTier=null; G.conti.comp=null; }
   if(G.wcc){ G.wcc.in=wccQualify; G.wcc.comp=null; }
   G.squad.forEach(p=>p.condition=100);   // 季前休整：体能回满
+  G.preseasonDone=false;                 // 新赛季可再次进行季前巡回赛
   G.season++; G.round=1;
+  pushNews(`✈️ 季前商业巡回赛开放：赛季初可在「📅 赛程日历」三选一，赚商业收入并备战。`,"match");
   G.table.forEach(t=>{t.P=t.W=t.D=t.L=t.GF=t.GA=t.pts=0;});
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
@@ -2930,6 +2932,21 @@ function resolveSuperCup(mg,og,win){
   evalAchievements(true);
   save(); render();
 }
+// ---------- 季前商业巡回赛（每赛季一次：按品牌价值赚钱 + 提升状态/士气备战） ----------
+const PRESEASON={ home:{name:"本土季前集训",icon:"🏖️",base:4,bv:0.2,form:1,frac:0.8,morale:3,rep:0,inj:0}, overseas:{name:"海外商业巡回赛",icon:"🌍",base:6,bv:0.5,form:1,frac:0.6,morale:5,rep:2,inj:0.12}, elite:{name:"精英邀请赛",icon:"🏆",base:5,bv:0.3,form:2,frac:0.7,morale:4,rep:0,inj:0.22} };
+function preseasonEst(type){ const t=PRESEASON[type]; return round1(t.base + brandValue()*t.bv); }
+function doPreseason(type){
+  if(G.preseasonDone){ toast("本季季前活动已完成"); return; }
+  const t=PRESEASON[type]; if(!t) return;
+  const income=round1(preseasonEst(type)*rnd(0.85,1.15));
+  G.cash=round1(G.cash+income);
+  G.squad.forEach(p=>{ if(Math.random()<t.frac) p.formIdx=clamp(p.formIdx+t.form,0,4); });
+  squadMoraleDelta(t.morale); if(t.rep) G.rep=clamp((G.rep||50)+t.rep,0,100);
+  if(t.inj>0 && Math.random()<t.inj){ const pool=G.squad.filter(p=>!p.injured); if(pool.length){ const v=pick(pool); v.injured=rint(1,2); pushNews(`🤕 季前热身赛中 <b>${v.name}</b> 受伤（缺席 ${v.injured} 轮）。`,"bad"); } }
+  G.preseasonDone=true;
+  pushNews(`✈️ <b>${t.name}</b>圆满结束：商业收入 +${eur(income)}${t.rep?`，声望 +${t.rep}`:''}，全队状态与士气提升，备战新赛季。`,"good");
+  save(); render();
+}
 function finishCup(champ){
   if(champ){ G._wonCup=true; ensureDyn(); G.dyn.cup++; addHonor("国内杯 冠军"); celebrate({trophy:"🏆", title:"国内杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 杯赛加冕`}); }
   const rep=champ?10:5, cash=champ?27:9;
@@ -3020,6 +3037,11 @@ function viewCalendar(){
   </div>
   <div class="panel"><h2>📋 接下来的联赛对手</h2><div class="negbox">${upcoming||'<div class="hint">本赛季联赛已结束</div>'}</div></div>
   <div class="panel"><h2>🏆 国内杯</h2><div class="negbox">${cupHTML}</div>${G.cup&&G.cup.done?`<div class="hint">${G.cup.outcome}</div>`:""}</div>
+  ${(G.round<=2 && !G.preseasonDone)?`<div class="panel" style="border-color:var(--gold)"><h2>✈️ 季前商业巡回赛 <span class="hint">（每赛季一次，赛季初进行）</span></h2>
+    <div class="hint" style="margin-bottom:8px">赛季前的商业活动：赚取出场费（收入随<b>品牌价值</b>上涨，当前 ${brandValue()}）、提升全队状态与士气备战。三选一：</div>
+    <button class="btn" style="width:100%;margin-bottom:6px" onclick="doPreseason('home')">🏖️ 本土季前集训 · 约 ${eur(preseasonEst('home'))} · 状态↑士气↑ · 无伤病</button>
+    <button class="btn" style="width:100%;margin-bottom:6px" onclick="doPreseason('overseas')">🌍 海外商业巡回赛 · 约 ${eur(preseasonEst('overseas'))} · 状态/士气↑ · 声望↑ · 略有伤病风险</button>
+    <button class="btn" style="width:100%" onclick="doPreseason('elite')">🏆 精英邀请赛 · 约 ${eur(preseasonEst('elite'))} · 状态大↑ · 伤病风险较高</button></div>`:''}
   ${(G.superCup&&!G.superCup.played)?`<div class="panel" style="border-color:var(--gold)"><h2>🛡️ 超级杯（揭幕战）</h2><div class="hint" style="margin-bottom:6px">作为上赛季冠军，出战超级杯对阵 <b>${G.superCup.opp.name}</b>（实力 ${G.superCup.opp.str}）。赢球获得奖杯 + 奖金 + 声望。</div><button class="btn big" style="width:100%" onclick="playSuperCup()">⚔️ 出战超级杯</button></div>`:(G.superCup&&G.superCup.played?`<div class="panel"><h2>🛡️ 超级杯</h2><div class="hint">${G.superCup.win?'🏆 夺冠':'亚军'}：${G.club} ${G.superCup.mg}-${G.superCup.og} ${G.superCup.opp.name}</div></div>`:'')}`;
 }
 function viewNational2(){
