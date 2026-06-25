@@ -881,27 +881,15 @@ function boostClub(c, intensity){
 }
 function runArmsRace(){
   if(G.armsRace===false) return;
-  const me=teamRatings().ovr, myD=myDiv();
-  const rivals=divClubs(myD).filter(c=>!c.you); if(!rivals.length) return;
-  const avg=rivals.reduce((s,c)=>s+clubStr(c),0)/rivals.length;
-  const dominance=Math.max(0, me-avg), streak=(G.dyn&&G.dyn.streak)||0;
-  const ambitious=[...rivals].sort((a,b)=>clubStr(b)-clubStr(a)).slice(0,3);
-  ambitious.forEach((c,idx)=>{
-    const cur=clubStr(c), target=me+1-idx;                       // 头号挑战者直逼/反超你
-    const intensity=clamp((target-cur)*0.5 + dominance*0.12 + streak*0.4, 0, 6);   // 投入力度（差距越大、你越统治，投入越猛）
-    if(intensity<0.3) return;
-    const added=boostClub(c, intensity);
-    if(idx===0 && added>=4) pushNews(`💰 <b>${c.name}</b> 休赛期豪购 ${added} 名强援，剑指冠军！`,"bad");
-    else if(idx===0 && (added>=1||intensity>=1.5)) pushNews(`💰 <b>${c.name}</b> 引援补强、剑指冠军！`,"bad");
+  const rivals=divClubs(myDiv()).filter(c=>!c.you); if(!rivals.length) return;
+  // 每家俱乐部按「自身实力档次/志向 + 本赛季转会窗成败运气」自主决定引援投入（真实签人+培养），而非追平你的强度
+  rivals.forEach(c=>{
+    const ambition=clamp((clubStr(c)-64)/10 + rnd(-0.8,1.4), 0, 3);   // 越大牌越舍得投；有的队转会窗成功、有的失败
+    if(ambition<0.5) return;
+    const added=boostClub(c, ambition);
+    if(added>=3 && Math.random()<0.4) pushNews(`💰 <b>${c.name}</b> 本休赛期积极引援（${added} 名新援）。`,"match");
   });
   rivals.forEach(c=>{ c.str=round1(clubStr(c)); });
-}
-// 世界同步增强：各国顶级联赛的强队逐季小幅变强，让全球与你「集体变强」同步，洲际赛持续有挑战（仅对无阵容的世界俱乐部调 str）
-function worldEscalate(){
-  if(G.armsRace===false) return;
-  const byCountry={};
-  G.table.forEach(c=>{ if(c.you||c.div!==0||c.squad) return; (byCountry[c.country]=byCountry[c.country]||[]).push(c); });
-  Object.values(byCountry).forEach(arr=>{ arr.sort((a,b)=>(b.str||0)-(a.str||0)); arr.slice(0,3).forEach((c,i)=>{ c.str=round1(clamp((c.str||70)+rnd(0.2,0.7)-i*0.12, 50, 93)); }); });
 }
 // ---------- 推进一轮 ----------
 function nextRound(){
@@ -1277,8 +1265,7 @@ function endSeason(){
   { const ne=expandWorld(); if(ne>0) pushNews(`🌍 联赛扩容：新增 ${ne} 家俱乐部（每联赛 ${DIV_SIZE} 队 · ${DIV_NAMES.length} 级联赛金字塔），本赛季起生效。`,"good"); }
   buildSchedules();
   divClubs(myDiv()).forEach(ensureSquad);
-  runArmsRace();                          // 军备竞赛：你的联赛对手追赶
-  worldEscalate();                        // 世界同步增强：各国顶级联赛强队逐季小幅变强
+  runArmsRace();                          // 联赛对手按自身志向/转会窗自主补强（非自动追平你）
   ensureRival();                          // 升降级后校验/重选宿敌
   startCup(); G.midweekDone=false;
   if(G.conti && G.conti.tier!=null) startConti();                       // 洲际杯自动加入当季赛程
@@ -2236,7 +2223,7 @@ function viewNews(){
 function toggleLiveMatch(){ G.liveMatch=!G.liveMatch; save(); render(); toast(G.liveMatch?"已开启比赛直播":"已关闭直播（快速模拟）"); }
 function toggleAutoSub(){ G.autoSub=!G.autoSub; save(); render(); toast(G.autoSub?"助教自动换人：开":"助教自动换人：关"); }
 function toggleEvents(){ G.events=!G.events; save(); render(); toast(G.events?"随机剧情事件：开":"随机剧情事件：关"); }
-function toggleArmsRace(){ G.armsRace=!G.armsRace; save(); render(); toast(G.armsRace?"军备竞赛/动态难度：开":"军备竞赛/动态难度：关"); }
+function toggleArmsRace(){ G.armsRace=!G.armsRace; save(); render(); toast(G.armsRace?"对手转会补强：开":"对手转会补强：关"); }
 function viewMenu(){
   return `<div class="panel"><h2>🎬 比赛设置</h2>
     <div class="hint" style="margin-bottom:8px">开启后每场比赛逐分钟直播，可中场/落后时换人、变阵；关闭则瞬间出结果（快速过赛季）。</div>
@@ -2245,8 +2232,8 @@ function viewMenu(){
     <button class="btn ${G.autoSub?'':'ghost'}" onclick="toggleAutoSub()">${G.autoSub?'🔄 助教自动换人：开':'🙅 助教自动换人：关'}</button>
     <div class="hint" style="margin:10px 0 6px">随机剧情事件：赛季中会随机发生财团收购、丑闻、转会传闻、更衣室风波等（部分需你抉择）。不想被打扰可关闭。</div>
     <button class="btn ${G.events?'':'ghost'}" onclick="toggleEvents()">${G.events?'🎲 随机剧情事件：开':'🚫 随机剧情事件：关'}</button>
-    <div class="hint" style="margin:10px 0 6px">军备竞赛 / 动态难度：你越统治联赛，豪门对手越舍得砸钱追赶（实力逐季提升），保持挑战性。想要轻松碾压可关闭。</div>
-    <button class="btn ${G.armsRace?'':'ghost'}" onclick="toggleArmsRace()">${G.armsRace?'⚔️ 军备竞赛：开':'🛌 军备竞赛：关'}</button>
+    <div class="hint" style="margin:10px 0 6px">对手转会补强：联赛各队每个休赛期会按自身实力档次/志向（含转会窗成败运气）自主引援、培养潜力新星。关闭则对手只靠球员自然成长、不额外引援。</div>
+    <button class="btn ${G.armsRace?'':'ghost'}" onclick="toggleArmsRace()">${G.armsRace?'⚔️ 对手转会补强：开':'🛌 对手转会补强：关'}</button>
   </div>
   <div class="panel"><h2>⚙️ 菜单 / 存档</h2>
     <div style="display:flex; gap:8px; flex-wrap:wrap">
