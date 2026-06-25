@@ -1086,7 +1086,7 @@ function endSeason(){
       else if(p.age<=27 && gap>0 && Math.random()<0.5) p.ovr=clamp(p.ovr+rint(0,2),48,99);
       else if(p.age>=30) p.ovr=clamp(p.ovr-rint(0,3),42,99);
     }
-    if(p.owned){ p.clubApps=(p.clubApps||0)+(p.apps||0); p.clubGls=(p.clubGls||0)+(p.gls||0); p.clubAst=(p.clubAst||0)+(p.ast||0); if(Math.random()<retireChance(p)) p._retire=true; }  // 累计队史数据 + 退役意愿（用本季出场判断）
+    if(p.owned){ p.clubApps=(p.clubApps||0)+(p.apps||0); p.clubGls=(p.clubGls||0)+(p.gls||0); p.clubAst=(p.clubAst||0)+(p.ast||0); if((p.apps||0)>=5) p.clubSeasons=(p.clubSeasons||0)+1; if(Math.random()<retireChance(p)) p._retire=true; }  // 累计队史数据(含有效赛季数) + 退役意愿（用本季出场判断）
     p.apps=0; p.gls=0; p.ast=0;
     p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult);
     if(p.owned) p.wage=wageDemand(p.ovr);
@@ -1473,7 +1473,7 @@ function noteSigning(p,fee){ ensureRecords(); if(!G.records.recordSigning || fee
 function noteSale(p,fee){ ensureRecords(); if(!G.records.recordSale || fee>G.records.recordSale.fee) G.records.recordSale={name:p.name, fee:round1(fee), season:G.season, club:G.club}; }
 function recordSeasonScorer(){ ensureRecords(); const top=[...G.squad].filter(p=>p.gls).sort((a,b)=>b.gls-a.gls)[0]; if(top){ G.records.seasonScorers.unshift({season:G.season, name:top.name, gls:top.gls, ast:top.ast||0, club:G.club}); if(G.records.seasonScorers.length>40) G.records.seasonScorers.pop(); } }
 function hofStats(p){ return {apps:(p.clubApps||0)+(p.apps||0), gls:(p.clubGls||0)+(p.gls||0), ast:(p.clubAst||0)+(p.ast||0)}; }
-function hofQualify(p){ const s=hofStats(p); return s.apps>=30 || s.gls>=18 || s.ast>=20; }
+function hofQualify(p){ const s=hofStats(p); return s.apps>=25 || s.gls>=18 || s.ast>=20 || (p.clubSeasons||0)>=5; } // 出场/进球/助攻 任一达标，或效力满5个有效赛季(队史功勋)
 function inductHOF(p, retired, clubName){
   ensureRecords(); if(p._hof || !hofQualify(p)) return;
   const club=clubName||G.club;
@@ -3260,7 +3260,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.rivalViewConf==null) G.rivalViewConf=G.conf;
   if(G.leagueViewDiv==null) G.leagueViewDiv=myDiv();
   // 迁移：老存档球员是大类位置(GK/DF/MF/FW)，转成具体位置 + 初始化兼职位置
-  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!p.prof||typeof p.prof!=="object"){ p.prof={}; p.pos2.forEach(x=>{ p.prof[x]=round2(clamp(0.65+pairAff(p.pos,x)*0.35,0.65,1.0)); }); } if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); if(p.morale==null) p.morale=70; };
+  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!p.prof||typeof p.prof!=="object"){ p.prof={}; p.pos2.forEach(x=>{ p.prof[x]=round2(clamp(0.65+pairAff(p.pos,x)*0.35,0.65,1.0)); }); } if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); if(p.morale==null) p.morale=70; if(p.owned){ if(p.clubApps==null)p.clubApps=0; if(p.clubGls==null)p.clubGls=0; if(p.clubAst==null)p.clubAst=0; if(p.clubSeasons==null)p.clubSeasons=0; if(p.joinedSeason==null)p.joinedSeason=G.season; } };
   allPlayers().forEach(fixPos);
   if(G.academy && Array.isArray(G.academy.prospects)) G.academy.prospects.forEach(fixPos);
   if(Array.isArray(G.loans)) G.loans.forEach(o=>fixPos(o.p));
