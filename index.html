@@ -546,7 +546,7 @@ function newGame(world, clubIdx, budget){
     board:62, boardWarned:false, seasonsAtClub:1, career:[{club:you.name, fromSeason:1}],
     stadium:{capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}, facil:{medical:0, commercial:0},
     records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[], derby:{rival:null,w:0,d:0,l:0}, invest:{brand:0,training:0,scouting:0,fund:0},
-    dyn:{league:0,cup:0,superCup:0,streak:0,bestStreak:0,treble:false,double:false,invincible:false,ballon:false,boot:false,lastGF:0,lastGA:0,seasons:0}, achievements:{},
+    dyn:{league:0,cup:0,superCup:0,streak:0,bestStreak:0,treble:false,double:false,invincible:false,ballon:false,boot:false,lastGF:0,lastGA:0,seasons:0}, achievements:{}, affiliates:[],
     lastWageBill:0, finished:false,
   };
   buildSchedules();
@@ -1221,6 +1221,7 @@ function endSeason(){
   if(Array.isArray(G.installments) && G.installments.length){ let paid=0; G.installments.forEach(it=>{ paid+=it.perSeason; it.seasonsLeft--; }); G.installments=G.installments.filter(it=>it.seasonsLeft>0); if(paid>0){ G.cash=round1(G.cash-paid); pushNews(`💳 转会分期付款本季支出 -${eur(round1(paid))}（尚余 ${G.installments.length} 笔）。`,"match"); } }
   repayDebtsSeason();   // 银行贷款本季还款
   { const fi=investIncome(); if(fi>0){ G.cash=round1(G.cash+fi); pushNews(`💹 投资理财收益到账 +${eur(fi)}。`,"good"); } }   // 俱乐部投资被动收入
+  affiliatesSeasonEnd();   // 卫星/合作俱乐部赛季结算
   genSponsorOffers();
   refreshStaffMarket();   // 新赛季教练市场刷新
   genJobOffers(rank);
@@ -2465,6 +2466,45 @@ function tvSign(){ const t=tvNeg; if(!t) return; const S=TV_STRUCTS[t.struct];
   pushNews(`📺 与 <b>${G.tvDeal.broadcaster}</b> 签订 ${t.seasons} 年转播合同（${S.name} · 年度基础包 ${eur(t.total)}）。`,"good");
   save(); render();
 }
+// ---------- 卫星 / 合作俱乐部（租借历练 / 海外商业联营 / 青训联营） ----------
+const AFFIL_MAX=3;
+const AFFIL_TYPES={
+  loan:       {name:"租借合作俱乐部", icon:"🤝", desc:"把年轻球员送去历练：每赛季一名有潜力的新星获得额外成长"},
+  commercial: {name:"海外商业联营",   icon:"💰", desc:"开拓海外市场：每赛季获得稳定商业收入（随品牌价值上涨）"},
+  youth:      {name:"青训联营",       icon:"🌱", desc:"合作青训：每赛季有机会输送一名外籍苗子进入你的青训营"},
+};
+function pickAffiliate(type){
+  const taken=new Set((G.affiliates||[]).map(a=>a.clubName));
+  const pool=G.table.filter(c=>!c.you && !taken.has(c.name));
+  let cand;
+  if(type==='loan'){ cand=pool.filter(c=>c.country===G.country && c.div>myDiv()); if(!cand.length) cand=pool.filter(c=>c.country===G.country); }
+  else cand=pool.filter(c=>c.country!==G.country);   // 商业/青训：海外新市场
+  return (cand&&cand.length)?pick(cand):null;
+}
+function establishAffiliate(type){
+  if(!AFFIL_TYPES[type]) return;
+  if((G.affiliates||[]).length>=AFFIL_MAX){ toast(`合作俱乐部已达上限（${AFFIL_MAX} 家）`); return; }
+  const c=pickAffiliate(type); if(!c){ toast("暂无合适的合作对象"); return; }
+  if(!Array.isArray(G.affiliates)) G.affiliates=[];
+  G.affiliates.push({clubName:c.name, country:c.country, type, since:G.season});
+  toast(`已与 ${c.name} 建立${AFFIL_TYPES[type].name}`);
+  pushNews(`🤝 与 <b>${c.name}</b>（${flagOf(c.country)}${c.country}）建立 <b>${AFFIL_TYPES[type].name}</b>：${AFFIL_TYPES[type].desc}`,"good");
+  save(); render();
+}
+function dissolveAffiliate(i){ const a=(G.affiliates||[])[i]; if(!a) return; G.affiliates.splice(i,1); pushNews(`🤝 解除与 ${a.clubName} 的合作关系。`,"match"); save(); render(); }
+function affiliatesSeasonEnd(){
+  if(!Array.isArray(G.affiliates)||!G.affiliates.length) return;
+  G.affiliates.forEach(a=>{
+    if(a.type==='commercial'){ const inc=round1(5+brandValue()*0.12); G.cash=round1(G.cash+inc); pushNews(`💰 海外商业联营（${a.clubName}）市场收入 +${eur(inc)}。`,"good"); }
+    else if(a.type==='loan'){
+      const yp=G.squad.filter(p=>p.age<=21 && (p.potential-p.ovr)>0 && (p.apps||0)<12).sort((x,y)=>(y.potential-y.ovr)-(x.potential-x.ovr))[0];
+      if(yp){ const gain=Math.min(yp.potential-yp.ovr, rint(2,4)); yp.ovr=clamp(yp.ovr+gain,40,99); yp.value=round1(fairValue(yp.ovr,yp.age)*FORMS[yp.formIdx].mult); pushNews(`🤝 <b>${yp.name}</b> 在合作俱乐部 ${a.clubName} 租借历练一季，评分提升至 ${yp.ovr}。`,"good"); }
+    }
+    else if(a.type==='youth'){
+      if(G.academy && Math.random()<0.6){ const p=makePlayer(pick(POS), {potBoost:rint(4,9), age:rint(15,17), nat:a.country}); p.homegrown=false; p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult); G.academy.prospects.push(p); if(G.academy.prospects.length>14) G.academy.prospects=G.academy.prospects.slice(-14); pushNews(`🌱 青训联营（${a.clubName}）为你输送一名 ${flagOf(a.country)}${a.country} 苗子进入青训营。`,"good"); }
+    }
+  });
+}
 // ---------- 财务 / 银行贷款 ----------
 function estSeasonGate(){ if(!G.stadium) return 0; const homeGames=Math.floor((G.totalRounds||22)/2); const rate=attendanceRate(75); return round1(homeGames*G.stadium.capacity*rate*G.stadium.ticketPrice/1e6); }
 function annualRevenue(){ const perRound=sponsorIncome()+commercialIncome(); return round1(perRound*(G.totalRounds||22) + estSeasonGate() + 8); }   // 粗略年收入
@@ -2606,6 +2646,8 @@ function viewBusiness(){
     <button class="btn" style="margin-top:8px" onclick="expandStadium()" ${st.capacity>=85000?'disabled':''}>${st.capacity>=85000?'已达最大容量':`⬆ 扩建 +5000 座（${eur(expandCost())}）`}</button>`;
   const facilHTML=Object.keys(FACIL).map(k=>{ const F=FACIL[k]; const lv=(G.facil&&G.facil[k])||0; const cost=lv<4?facilCost(lv):null; return `<div class="negbox"><div class="l"><span>${F.icon} <b>${F.name}</b> <span class="hint">Lv.${lv}/4</span></span>${cost!=null?`<button class="btn sm" onclick="upgradeFacil('${k}')">升级（${eur(cost)}）</button>`:'<span class="ctr-tag" style="background:#3a3320;color:var(--gold)">满级</span>'}</div><div class="hint" style="margin-top:4px">${F.desc}${k==="commercial"&&lv?` · 当前 +${eur(commercialIncome())}/轮`:''}</div></div>`; }).join("");
   const investHTML=INVEST_KEYS.map(k=>{ const I=INVEST[k]; const lv=investLvl(k); const cost=investCost(k); const cur = k==="brand"?`当前 +${lv*7} 品牌` : k==="fund"?`当前 +${eur(investIncome())}/赛季` : k==="scouting"?`当前妖人产出 +${lv}`:`当前成长加成 Lv.${lv}`; return `<div class="negbox"><div class="l"><span>${I.icon} <b>${I.name}</b> <span class="hint">Lv.${lv}/4</span></span>${cost!=null?`<button class="btn sm" onclick="upgradeInvest('${k}')">投资（${eur(cost)}）</button>`:'<span class="ctr-tag" style="background:#3a3320;color:var(--gold)">满级</span>'}</div><div class="hint" style="margin-top:4px">${I.desc}${lv?` · ${cur}`:''}</div></div>`; }).join("");
+  const affHTML=(G.affiliates||[]).length? (G.affiliates||[]).map((a,i)=>`<div class="negbox"><div class="l"><span>${AFFIL_TYPES[a.type]?AFFIL_TYPES[a.type].icon:''} <b>${a.clubName}</b> <span class="hint">${flagOf(a.country)}${a.country} · ${AFFIL_TYPES[a.type]?AFFIL_TYPES[a.type].name:''}</span></span><button class="btn sm ghost" onclick="dissolveAffiliate(${i})">解除</button></div><div class="hint" style="margin-top:3px">${AFFIL_TYPES[a.type]?AFFIL_TYPES[a.type].desc:''}</div></div>`).join("") : '<div class="hint">暂无合作俱乐部。建立合作可获得：🤝 青年历练 / 💰 海外商业收入 / 🌱 外籍苗子。</div>';
+  const affBtns=(G.affiliates||[]).length<AFFIL_MAX? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${Object.keys(AFFIL_TYPES).map(t=>`<button class="btn sm" onclick="establishAffiliate('${t}')">${AFFIL_TYPES[t].icon} 建立${AFFIL_TYPES[t].name}</button>`).join("")}</div>` : `<div class="hint" style="margin-top:6px">已达上限（${AFFIL_MAX} 家）。</div>`;
   return `
   <div class="panel"><h2>🏛️ 帅位 / 董事会</h2>
     <div class="squadsum">
@@ -2624,6 +2666,7 @@ function viewBusiness(){
   <div class="panel"><h2>🏟️ 主场球场</h2>${stadiumHTML}</div>
   <div class="panel"><h2>🏗️ 俱乐部设施</h2>${facilHTML}</div>
   <div class="panel"><h2>💼 俱乐部投资 <span class="hint">（大额长期投入，永久收益）</span></h2>${investHTML}</div>
+  <div class="panel"><h2>🤝 卫星 / 合作俱乐部 <span class="hint">（最多 ${AFFIL_MAX} 家）</span></h2>${affHTML}${affBtns}</div>
   <div class="panel"><h2>📜 执教生涯</h2><div class="negbox">${careerHTML}</div></div>
   <div class="panel"><h2>📈 执教邀请（挖角）</h2>${jobs}</div>
   <div class="panel"><h2>💰 财务总览</h2>
