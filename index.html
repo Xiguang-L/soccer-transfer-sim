@@ -596,7 +596,7 @@ function newGame(world, clubIdx, budget){
     stadium:{capacity:stadiumCap(s), ticketPrice:Math.round(20+Math.max(0,(s-55))*0.9), lastAtt:0, lastGate:0, lastRate:0}, facil:{medical:0, commercial:0},
     records:{topWin:null, recordSigning:null, recordSale:null, seasonScorers:[]}, hof:[], derby:{rival:null,w:0,d:0,l:0}, invest:{brand:0,training:0,scouting:0,fund:0},
     dyn:{league:0,cup:0,superCup:0,streak:0,bestStreak:0,treble:false,double:false,invincible:false,ballon:false,boot:false,lastGF:0,lastGA:0,seasons:0}, achievements:{}, affiliates:[],
-    lastWageBill:0, finished:false,
+    lastWageBill:0, finished:false, mgr:{P:0,W:0,D:0,L:0,GF:0,GA:0},
   };
   buildSchedules();
   divClubs(myD).forEach(ensureSquad);              // 同区对手生成完整阵容
@@ -1636,6 +1636,7 @@ function addHonor(title, who){ if(!Array.isArray(G.honors)) G.honors=[]; G.honor
 // ---------- 队史纪录 / 名人堂 ----------
 function ensureRecords(){ if(!G.records) G.records={}; const r=G.records; if(!('topWin' in r)) r.topWin=null; if(!('recordSigning' in r)) r.recordSigning=null; if(!('recordSale' in r)) r.recordSale=null; if(!Array.isArray(r.seasonScorers)) r.seasonScorers=[]; if(!('worstLoss' in r)) r.worstLoss=null; if(!('mostGoalsSeason' in r)) r.mostGoalsSeason=null; if(!('leastConceded' in r)) r.leastConceded=null; if(!('bestPoints' in r)) r.bestPoints=null; if(!('recordCrowd' in r)) r.recordCrowd=null; if(r.streak==null) r.streak=0; if(r.bestUnbeaten==null) r.bestUnbeaten=0; if(!Array.isArray(G.hof)) G.hof=[]; if(!Array.isArray(G.seasonHistory)) G.seasonHistory=[]; }
 function recordMatch(mg,og,opp){ ensureRecords(); const r=G.records;
+  if(!G.mgr) G.mgr={P:0,W:0,D:0,L:0,GF:0,GA:0}; const m2=G.mgr; m2.P++; m2.GF+=mg; m2.GA+=og; if(mg>og)m2.W++; else if(mg<og)m2.L++; else m2.D++;   // 经理生涯统计（所有正式比赛）
   if(mg>og){ const m=mg-og, tw=r.topWin; if(!tw || m>(tw.mg-tw.og) || (m===(tw.mg-tw.og)&&mg>tw.mg)) r.topWin={mg,og,opp,season:G.season,club:G.club}; }
   if(og>mg){ const m=og-mg, wl=r.worstLoss; if(!wl || m>(wl.og-wl.mg) || (m===(wl.og-wl.mg)&&og>wl.og)) r.worstLoss={mg,og,opp,season:G.season,club:G.club}; }
   if(mg>=og){ r.streak=(r.streak||0)+1; if(r.streak>(r.bestUnbeaten||0)) r.bestUnbeaten=r.streak; } else r.streak=0;   // 各项赛事最长不败
@@ -1814,7 +1815,22 @@ function viewHonors(){
     <div class="hint" style="margin:6px 0 3px">⚽ 年度最佳阵容（S${aw.season}）：</div>
     ${aw.tots.map(t=>`<div class="l"><span><span class="pos ${POS_LINE[t.pos]||''}" style="font-size:11px">${t.pos}</span> ${awName(t)}${t.you?' ⭐':''}</span><span class="hint">${t.club} · ${t.ovr}${t.gls?` · ⚽${t.gls}`:''}${t.ast?` · 🅰️${t.ast}`:''}</span></div>`).join("")}`
     : '<div class="hint">赛季结束后评选金球奖 / 金靴 / 年度最佳阵容（评选范围：你所在的联赛；⭐ = 你的球员）。</div>';
-  return `<div class="panel" style="border-color:var(--gold)"><h2>🏆 王朝成就 <span class="hint">（王朝声望 ${dp} · 称号「${dynastyTitle(dp)}」· ${unlocked}/${ACHIEVEMENTS.length}）</span></h2>
+  const mg2=G.mgr||{P:0,W:0,D:0,L:0,GF:0,GA:0}; const winPct=mg2.P?Math.round(mg2.W/mg2.P*100):0;
+  return `<div class="panel"><h2>📋 经理生涯统计</h2>
+    <div class="squadsum">
+      <div class="ring"><span class="num">${mg2.P}</span><span class="lbl">执教场次</span></div>
+      <div class="ring"><span class="num" style="color:var(--up)">${winPct}%</span><span class="lbl">胜率</span></div>
+      <div class="ring"><span class="num" style="color:var(--gold)">${h.length}</span><span class="lbl">冠军</span></div>
+      <div class="ring"><span class="num">${G.season}</span><span class="lbl">执教赛季</span></div>
+      <div class="ring"><span class="num">${(G.career||[]).length}</span><span class="lbl">执教球队</span></div>
+    </div>
+    <div class="negbox">
+      <div class="l"><span>战绩（胜-平-负）</span><b>${mg2.W}-${mg2.D}-${mg2.L}</b></div>
+      <div class="l"><span>进球 / 失球</span><b>${mg2.GF} / ${mg2.GA}（净 ${mg2.GF-mg2.GA>0?'+':''}${mg2.GF-mg2.GA}）</b></div>
+      <div class="l"><span>王朝声望 · 称号</span><b style="color:var(--gold)">${dp} · ${dynastyTitle(dp)}</b></div>
+    </div>
+  </div>
+  <div class="panel" style="border-color:var(--gold)"><h2>🏆 王朝成就 <span class="hint">（王朝声望 ${dp} · 称号「${dynastyTitle(dp)}」· ${unlocked}/${ACHIEVEMENTS.length}）</span></h2>
     <div class="hint" style="margin-bottom:6px">达成里程碑累积王朝声望，解锁更高教头称号。</div>${achHTML}</div>
   <div class="panel"><h2>🏅 个人奖项 <span class="hint">（上赛季）</span></h2><div class="negbox">${awHTML}</div></div>
   <div class="panel"><h2>🏅 经理生涯荣誉 <span class="hint">（共 ${h.length} 座冠军）</span></h2>
