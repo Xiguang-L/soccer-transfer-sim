@@ -449,6 +449,29 @@ const DEEP_BASE=73;
 const DEEP_EXTRA=new Set(["摩洛哥","新西兰","美国","韩国"]);   // 保证各大洲都有真实阵容
 function isDeepCountry(country){ const W=WORLD_COUNTRIES.find(w=>w.n===country); return !!((W&&W.b>=DEEP_BASE)||DEEP_EXTRA.has(country)); }
 function ensureDeepSquads(){ (G.table||[]).forEach(c=>{ if(!c.you && c.div===0 && !c.squad && (isDeepCountry(c.country)||c.country===G.country)) ensureSquad(c); }); }
+// 派球探考察任意联赛：按需生成其真实球员（可侦察/求购）。额外侦察的联赛有上限，超额清理最旧的（深度联赛/本国不清），保护存档大小
+const SCOUT_MAX=8;
+function leagueKey(country,div){ return country+"|"+div; }
+function leagueScoutable(country,div){ return country!==G.country && leagueClubs(country,div).some(c=>!c.you&&!c.squad); }
+function scoutLeague(country, div){
+  const clubs=leagueClubs(country,div).filter(c=>!c.you);
+  if(!clubs.length || clubs.every(c=>c.squad)){ toast("该联赛球员已可侦察"); return; }
+  const cost=round1(0.3 + clubs.length*0.04);
+  if(G.cash<cost){ toast(`现金不足派遣球探（需 ${eur(cost)}）`); return; }
+  G.cash=round1(G.cash-cost);
+  clubs.forEach(ensureSquad);
+  clubs.forEach(c=>{ c.str=round1(clubStr(c)); });
+  if(!Array.isArray(G.scoutedLeagues)) G.scoutedLeagues=[];
+  const key=leagueKey(country,div);
+  G.scoutedLeagues=G.scoutedLeagues.filter(k=>k!==key); G.scoutedLeagues.push(key);
+  while(G.scoutedLeagues.length>SCOUT_MAX){
+    const old=G.scoutedLeagues.shift().split("|"); const oc=old[0], od=+old[1];
+    if(oc===G.country || isDeepCountry(oc)) continue;
+    leagueClubs(oc, od).forEach(c=>{ if(!c.you) c.squad=null; });   // 清理最旧侦察的联赛（释放存档）
+  }
+  pushNews(`🔭 派球探考察 ${flagOf(country)}${country} ${DIV_NAMES[div]||'联赛'}（耗资 ${eur(cost)}）——其球员已可在「💱转会市场」搜索/侦察/求购。`,"good");
+  save(); render();
+}
 function leagueClubs(country, div){ return G.table.filter(c=>c.country===country && c.div===div); }
 function divClubs(d){ return leagueClubs(G.country, d); }
 function divIdxs(d){ const a=[]; G.table.forEach((c,i)=>{ if(c.country===G.country && c.div===d) a.push(i); }); return a; }
@@ -2178,6 +2201,11 @@ function viewLeague2(){
   const countryChips=WORLD_COUNTRIES.filter(w=>w.c===vConf).map(w=>`<span class="chip ${vc===w.n?'active':''}" onclick="G.leagueViewCountry='${w.n}';G.leagueViewDiv=null;render()">${flagOf(w.n)}${w.n===G.country?'🏠':''}${w.n}</span>`).join("");
   const divChips=divsHere.length>1? `<div class="filterbar">${divsHere.map(d=>`<span class="chip ${vd===d?'active':''}" onclick="G.leagueViewDiv=${d};render()">${DIV_NAMES[d]||('第'+(d+1)+'级')}</span>`).join("")}</div>`:"";
   const relZone=sorted.length-PROMO;
+  let scoutBox="";
+  if(!isMine){
+    if(leagueScoutable(vc,vd)){ const cost=round1(0.3+leagueClubs(vc,vd).filter(c=>!c.you).length*0.04); scoutBox=`<button class="btn" style="margin-top:8px" onclick="scoutLeague('${vc}',${vd})">🔭 派球探考察该联赛（生成真实球员，可侦察/签约 · 约 ${eur(cost)}）</button><div class="hint" style="margin-top:4px">最多保留 ${SCOUT_MAX} 个额外侦察的联赛，超出会清理最早侦察的（深度联赛/本国除外）。</div>`; }
+    else scoutBox=`<div class="hint" style="margin-top:6px">✅ 该联赛已可侦察——去「💱转会市场」搜索 ${vc} 即可。</div>`;
+  }
   return `
   <div class="panel">
     <h2>🏆 第 ${G.season} 赛季 · ${flagOf(vc)}${vc} ${DIV_NAMES[vd]||'联赛'} <span class="hint">（第 ${Math.min(G.round,G.totalRounds)} / ${G.totalRounds} 轮）</span></h2>
@@ -2198,7 +2226,8 @@ function viewLeague2(){
         </tr>`;
       }).join("")}
     </table>
-    <div class="hint">${isMine?`绿=升级区(前${PROMO})，红=降级区(后${PROMO})，赛季末自动升降级。`:`${flagOf(vc)}${vc} 联赛——可在「💱转会市场」全球搜索或「🆚球队阵容」直接买卖其球员。`}</div>
+    <div class="hint">${isMine?`绿=升级区(前${PROMO})，红=降级区(后${PROMO})，赛季末自动升降级。`:`${flagOf(vc)}${vc} 联赛——侦察后其球员可在「💱转会市场」搜索/求购。`}</div>
+    ${scoutBox}
   </div>`+statBoards(vc,vd);
 }
 function viewLeague(){
