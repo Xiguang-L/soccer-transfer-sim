@@ -810,12 +810,26 @@ function ensureRival(){
 }
 function isDerbyOpp(name){ return !!(G.derby && G.derby.rival && G.derby.rival===name); }
 // ---------- 军备竞赛 / 动态难度：你越统治，豪门越砸钱追赶，保持挑战性 ----------
-function boostClub(c, gain){
-  if(!c.squad){ c.str=round1((c.str||75)+gain); return; }
-  const best=[...c.squad].sort((a,b)=>b.ovr-a.ovr);
-  let budget=gain*11;   // 总提升点数（平摊到主力≈gain）
-  for(let i=0;i<best.length && budget>0.5;i++){ const p=best[i]; const inc=Math.min(Math.ceil(budget), rint(1,2)); p.ovr=clamp(p.ovr+inc,40,96); p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult); budget-=inc; }
-  if(gain>=2 && Math.random()<0.5){ const star=makePlayer(pick(POS), 0); star.age=rint(23,28); star.ovr=clamp(Math.round(clubStr(c)+rnd(1,4)),60,95); star.scouted=true; star.value=round1(fairValue(star.ovr,star.age)*FORMS[star.formIdx].mult); c.squad.push(star); }   // 头号豪门偶尔签下球星
+function boostClub(c, intensity){
+  if(!c.squad){ c.str=round1((c.str||75)+Math.min(intensity,3)); return; }
+  const lvl=clubStr(c);
+  // 1) 引援：投入越大签的强援越多（现实约束：最多 3 名/季）。新援自带与年龄相符的潜力——年轻人潜力更高
+  const signs = intensity>=4?3 : intensity>=2?2 : intensity>=0.8?1 : (Math.random()<intensity?1:0);
+  for(let i=0;i<signs;i++){
+    const star=makePlayer(pick(POS), 0);
+    star.age=rint(20,29);
+    star.ovr=clamp(Math.round(lvl+rnd(1,4)),58,99);
+    star.potential=clamp(star.ovr + (star.age<=21?rint(3,8):star.age<=24?rint(1,4):0), star.ovr, 99);
+    star.scouted=true; star.value=round1(fairValue(star.ovr,star.age)*FORMS[star.formIdx].mult);
+    c.squad.push(star);
+  }
+  // 2) 内部培养：有潜力空间的球员朝「各自潜力」成长，速度视天赋/年龄而定（非硬锁统一上限；到顶不再涨）
+  c.squad.forEach(p=>{
+    const room=(p.potential||p.ovr)-p.ovr; if(room<=0) return;
+    const youthFac = p.age<=21?1 : p.age<=24?0.7 : p.age<=28?0.4 : 0.15;
+    if(Math.random() < clamp(0.18*intensity,0,0.6)*youthFac){ p.ovr=clamp(p.ovr+Math.min(room, rint(1,2)),40,99); p.value=round1(fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult); }
+  });
+  if(c.squad.length>26){ c.squad.sort((a,b)=>b.ovr-a.ovr); c.squad=c.squad.slice(0,24); }   // 规模上限：淘汰边缘人
 }
 function runArmsRace(){
   if(G.armsRace===false) return;
@@ -826,10 +840,10 @@ function runArmsRace(){
   const ambitious=[...rivals].sort((a,b)=>clubStr(b)-clubStr(a)).slice(0,3);
   ambitious.forEach((c,idx)=>{
     const cur=clubStr(c), target=me+1-idx;                       // 头号挑战者直逼/反超你
-    const gain=clamp((target-cur)*0.45 + dominance*0.12 + streak*0.4, 0, 3.2);
-    if(gain<0.3) return;
-    boostClub(c, gain);
-    if(idx===0 && gain>=1.2) pushNews(`💰 <b>${c.name}</b> 重金引援、剑指冠军——实力大幅提升！`,"bad");
+    const intensity=clamp((target-cur)*0.5 + dominance*0.12 + streak*0.4, 0, 6);   // 投入力度（差距越大、你越统治，投入越猛）
+    if(intensity<0.3) return;
+    boostClub(c, intensity);
+    if(idx===0 && intensity>=1.5) pushNews(`💰 <b>${c.name}</b> 大手笔引援、剑指冠军——阵容显著加强！`,"bad");
   });
   rivals.forEach(c=>{ c.str=round1(clubStr(c)); });
 }
