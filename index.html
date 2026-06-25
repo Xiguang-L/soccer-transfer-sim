@@ -2923,7 +2923,38 @@ function acceptJob(clubName){
 }
 // ---------- 国家队 ----------
 function ntPool(nat){ return allPlayers().filter(p=>p.nat===nat).concat((G.loans||[]).map(o=>o.p).filter(p=>p.nat===nat)); }
-function ntStrength(nat){ const a=ntPool(nat).sort((x,y)=>y.ovr-x.ovr).slice(0,11); return a.length? a.reduce((s,p)=>s+p.ovr,0)/a.length : 50; }
+function ntLineupEff(nat){   // 你亲自排出的首发 → 按 评分×位置熟练度 求均值（不满11人则回退自动最强）
+  const N=G.national; if(!N||nat!==N.nation||!Array.isArray(N.lineup)) return null;
+  const ss=ntSlots(); const byId={}; ntPool(nat).forEach(p=>byId[p.id]=p);
+  let sum=0,cnt=0; for(let i=0;i<ss.length;i++){ const id=N.lineup[i]; if(id==null) continue; const p=byId[id]; if(!p) continue; sum+=p.ovr*posEff(p,ss[i].pos); cnt++; }
+  return cnt>=11? sum/11 : null;
+}
+function ntStrength(nat){ const e=ntLineupEff(nat); if(e!=null) return e; const a=ntPool(nat).sort((x,y)=>y.ovr-x.ovr).slice(0,11); return a.length? a.reduce((s,p)=>s+p.ovr,0)/a.length : 50; }
+// —— 国家队排兵布阵（与俱乐部并行的一套阵型/拖拽系统）——
+function ntSlots(){ const N=G.national; return (FORMATIONS[N&&N.formation]||FORMATIONS["4-3-3"]).slots; }
+function ntFindPlayer(id){ const my=G.national.nation; return ntPool(my).find(p=>p.id===id); }
+function ntSanitizeLineup(){ const N=G.national; if(!N||!N.nation) return; if(!FORMATIONS[N.formation]) N.formation="4-3-3"; const ss=ntSlots(); if(!Array.isArray(N.lineup)) N.lineup=[]; N.lineup.length=ss.length; const ids=new Set(ntPool(N.nation).map(p=>p.id)); const seen=new Set(); for(let i=0;i<ss.length;i++){ const id=N.lineup[i]; if(id==null||!ids.has(id)||seen.has(id)) N.lineup[i]=null; else seen.add(id); } }
+function ntAutoLineup(){ const N=G.national; if(!N.formation) N.formation="4-3-3"; const ss=ntSlots(); const avail=ntPool(N.nation).slice().sort((a,b)=>b.ovr-a.ovr).slice(0,30); N.lineup=new Array(ss.length).fill(null); const n=ss.length; if(!avail.length) return; const m=Math.max(n,avail.length); const cost=[]; for(let i=0;i<n;i++){ const row=new Array(m).fill(0); for(let j=0;j<avail.length;j++){ const p=avail[j]; row[j]=-(p.ovr*posEff(p,ss[i].pos)); } cost.push(row); } const ans=hungarianAssign(cost); for(let i=0;i<n;i++){ const j=ans[i]; if(j>=0&&j<avail.length) N.lineup[i]=avail[j].id; } }
+function ntSetFormation(f){ if(!FORMATIONS[f])return; G.national.formation=f; ntAutoLineup(); save(); render(); }
+function ntPlaceInLineup(id, slotIdx){ const N=G.national; if(!ntFindPlayer(id)) return; const cur=N.lineup.indexOf(id), occ=N.lineup[slotIdx]; if(cur>=0) N.lineup[cur]=occ; N.lineup[slotIdx]=id; save(); render(); }
+function ntRemoveFromLineup(id){ const N=G.national; const i=N.lineup.indexOf(id); if(i>=0) N.lineup[i]=null; }
+function ntDropOnSlot(i){ const N=G.national; if(!dragData) return; if(dragData.from==="ntbench") ntPlaceInLineup(dragData.id,i); else if(dragData.from==="ntslot"){ const a=dragData.slot, t=N.lineup[i]; N.lineup[i]=N.lineup[a]; N.lineup[a]=t; save(); render(); } dragData=null; }
+function ntDropOnBench(){ const N=G.national; if(dragData&&dragData.from==="ntslot"){ N.lineup[dragData.slot]=null; save(); render(); } dragData=null; }
+function ntClickBench(id){ G._ntsel=(G._ntsel===id?null:id); render(); }
+function ntClickSlot(i){ const N=G.national; if(G._ntsel!=null){ ntPlaceInLineup(G._ntsel,i); G._ntsel=null; } else if(N.lineup[i]!=null){ ntRemoveFromLineup(N.lineup[i]); save(); render(); } }
+function ntPitchSlotHTML(s,i){ const N=G.national; const id=N.lineup[i]; const p=(id!=null)&&ntFindPlayer(id);
+  if(p){ const ef=posEff(p,s.pos); const oop=ef<1; const effTxt=ef>=0.999?"本职":`${POS_CN[s.pos]} 熟练度 ${Math.round(ef*100)}%`;
+    return `<div class="slot ${oop?'oop':''}" style="left:${s.x}%;top:${s.y}%" draggable="true" ondragstart="dragData={from:'ntslot',slot:${i},id:${p.id}}" ondragover="event.preventDefault()" ondrop="ntDropOnSlot(${i})" onclick="ntClickSlot(${i})" title="${p.name}（本职 ${POS_CN[p.pos]}｜该位置：${effTxt}）"><div class="disc ${POS_LINE[p.pos]}">${p.ovr}</div><div class="nm">${s.pos}·${lastName(p.name)}</div></div>`; }
+  return `<div class="slot empty ${G._ntsel!=null?'avail':''}" style="left:${s.x}%;top:${s.y}%" ondragover="event.preventDefault()" ondrop="ntDropOnSlot(${i})" onclick="ntClickSlot(${i})"><div class="disc">${s.pos}</div></div>`;
+}
+function ntRenderPitch(){ const N=G.national; const ss=ntSlots(); const inLine=new Set((N.lineup||[]).filter(x=>x!=null));
+  const benchP=ntPool(N.nation).filter(p=>!inLine.has(p.id)).sort((a,b)=>b.ovr-a.ovr).slice(0,28);
+  const bench=benchP.map(p=>`<div class="benchchip ${G._ntsel===p.id?'sel':''}" draggable="true" ondragstart="dragData={from:'ntbench',id:${p.id}}" onclick="ntClickBench(${p.id})" title="${p.name}"><span class="pos ${POS_LINE[p.pos]}" style="width:26px">${p.pos}</span>${lastName(p.name)} <b>${p.ovr}</b>${p.owned?' <span style="color:var(--up)" title="你的俱乐部球员">★</span>':''}</div>`).join("")||`<span class="hint">无可征召球员</span>`;
+  return `<div class="filterbar">${Object.keys(FORMATIONS).map(f=>`<span class="chip ${N.formation===f?'active':''}" onclick="ntSetFormation('${f}')">${f}</span>`).join("")}<span class="spacer" style="flex:1"></span><button class="btn sm ghost" onclick="ntAutoLineup();save();render()">⚡ 自动最佳</button></div>
+    <div class="pitch" ondragover="event.preventDefault()">${ss.map((s,i)=>ntPitchSlotHTML(s,i)).join("")}</div>
+    <div class="hint" style="margin-top:8px">可征召球员（拖到球场上场 / 把场上球员拖回此处下场；★ = 你俱乐部的球员）</div>
+    <div class="bench" ondragover="event.preventDefault()" ondrop="ntDropOnBench()">${bench}</div>`;
+}
 function appointNational(nat){ if(!G.national) G.national={nation:null,titles:0,tactic:"平衡",invites:[],comp:null,nextStage:"contQual"}; G.national.nation=nat||null; save(); render(); }
 // 洲际归属
 const POOL_CONF={brazil:"南美",argentina:"南美",latin:"南美",mexico:"中北美",usa:"中北美",france:"欧洲",england:"欧洲",spain:"欧洲",germany:"欧洲",portugal:"欧洲",netherlands:"欧洲",italy:"欧洲",belgium:"欧洲",britIsles:"欧洲",germanic:"欧洲",nordic:"欧洲",eastEurope:"欧洲",balkan:"欧洲",china:"亚洲",japan:"亚洲",korea:"亚洲",mideast:"亚洲",seAsia:"亚洲",southAsia:"亚洲",westAfrica:"非洲",northAfrica:"非洲",oceania:"大洋洲"};
@@ -2942,10 +2973,10 @@ function genNTInvites(){
   if(elig.length<3) elig=NAT_KEYS.slice();
   G.national.invites=elig.sort(()=>Math.random()-0.5).slice(0,3);
 }
-function acceptNTInvite(nat){ G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; toast(`你已出任 ${nat} 国家队主帅`); pushNews(`🌐 你接受邀请，出任 <b>${NATIONS[nat].flag}${nat}</b> 国家队主帅！`,"good"); startStage("contQual"); }
+function acceptNTInvite(nat){ G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; G.national.formation="4-3-3"; ntAutoLineup(); toast(`你已出任 ${nat} 国家队主帅`); pushNews(`🌐 你接受邀请，出任 <b>${NATIONS[nat].flag}${nat}</b> 国家队主帅！`,"good"); startStage("contQual"); }
 const NT_HIGH_REP=80;
 function freePickAvailable(){ return (G.rep||50)>=NT_HIGH_REP && (G.national.lastFreePick==null || (G.season-G.national.lastFreePick)>=4); }
-function freePickNT(nat){ if(!NATIONS[nat]) return; G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; G.national.lastFreePick=G.season; toast(`高声望特权：执教 ${nat} 国家队`); pushNews(`🎖️ 高声望特权：你自由选择执教 <b>${NATIONS[nat].flag}${nat}</b> 国家队！`,"good"); startStage("contQual"); }
+function freePickNT(nat){ if(!NATIONS[nat]) return; G.national.nation=nat; G.national.invites=[]; G.national.comp=null; G.national.nextStage="contQual"; G.national.lastFreePick=G.season; G.national.formation="4-3-3"; ntAutoLineup(); toast(`高声望特权：执教 ${nat} 国家队`); pushNews(`🎖️ 高声望特权：你自由选择执教 <b>${NATIONS[nat].flag}${nat}</b> 国家队！`,"good"); startStage("contQual"); }
 function resignNT(){ const n=G.national.nation; G.national.nation=null; G.national.comp=null; genNTInvites(); toast("已卸任国家队"); if(n) pushNews(`你卸任了 ${n} 国家队主帅。`,"match"); save(); render(); }
 function setNtTactic(t){ if(!TACTICS[t])return; G.national.tactic=t; save(); render(); }
 function ntTacticBonus(myStr,oppStr){ const t=G.national.tactic||"平衡"; let att=0,def=0;
@@ -3364,23 +3395,25 @@ function viewNational2(){
     if(c.done) campHTML+=`<div class="hint" style="margin:8px 0">${c.outcome} · 下一阶段将自动开始</div>`;
     else campHTML+=`<div class="hint" style="margin-top:8px">下一场将通过顶部「下一场」按钮进行，与联赛自动穿插。</div>`;
   }
-  const xi=ntPool(my).sort((a,b)=>b.ovr-a.ovr).slice(0,11);
+  if(!Array.isArray(N.lineup) || !N.lineup.length){ N.formation=N.formation||"4-3-3"; ntAutoLineup(); } else ntSanitizeLineup();
+  const tac=N.tactic||"平衡";
   return freeBlock + `<div class="panel"><h2>🌐 ${NATIONS[my].flag} ${my} 国家队</h2>
     <div class="squadsum">
-      <div class="ring"><span class="num">${Math.round(ntStrength(my))}</span><span class="lbl">实力</span></div>
+      <div class="ring"><span class="num">${Math.round(ntStrength(my))}</span><span class="lbl">首发实力</span></div>
       <div class="ring"><span class="num">${ntPool(my).length}</span><span class="lbl">可征召</span></div>
       <div class="ring"><span class="num">${N.titles||0}</span><span class="lbl">冠军</span></div>
       <div class="ring"><span class="num" style="font-size:15px">${confOf(my)}</span><span class="lbl">所属洲</span></div>
+      <div class="ring"><span class="num" style="font-size:16px">${N.formation||"4-3-3"}</span><span class="lbl">阵型</span></div>
       <div class="spacer"></div>
       <button class="btn ghost" onclick="resignNT()">辞去国家队</button>
     </div>
-    <div class="hint" style="margin:4px 0">国家队战术：</div>
+  </div>
+  <div class="panel"><h2>🏟️ 排兵布阵 <span class="hint">拖动球员排布首发；首发实力随你的阵容与位置熟练度变化</span></h2>
+    ${ntRenderPitch()}
+    <div class="hint" style="margin:10px 0 4px">🎯 国家队战术 <b>${tac}</b>：${TACTICS[tac].desc}</div>
     <div class="filterbar">${tacticChips}</div>
   </div>
-  <div class="panel"><h2>🏆 ${st?st.name:"赛事"}</h2>${campHTML}</div>
-  <div class="panel"><h2>征召阵容（最强 11 人）</h2>
-    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${xi.map(p=>`<div class="pcard"><div class="prow"><span class="pos ${POS_LINE[p.pos]}" title="${POS_CN[p.pos]||''}">${p.pos}</span><span class="pname clk" onclick="openPlayer(${p.id})">${NATIONS[p.nat].flag} ${p.name}</span><span class="ovr">${p.ovr}</span></div><div class="meta">${p.owned?'<span class="ctr-tag" style="background:#1f3a2a;color:var(--up)">你的球员</span>':'<span class="hint">外部球员</span>'} <span>${p.age}岁</span></div></div>`).join("")}</div>
-  </div>`;
+  <div class="panel"><h2>🏆 ${st?st.name:"赛事"}</h2>${campHTML}</div>`;
 }
 function playInternational(){
   if(!G.national.nation){ toast("请先选择并任命一支国家队"); return; }
