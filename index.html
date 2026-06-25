@@ -476,7 +476,7 @@ function makePlayer(pos, opt){
     id:_id++, name, nat, pos:posD, pos2, prof, traits, morale:70, age, ovr, potential,
     potEst: clamp(potential+rint(-7,7), ovr, 99), // 未侦察时的模糊估计
     scouted:false,
-    formIdx, injured:0, apps:0,
+    formIdx, injured:0, apps:0, condition:100,
     value: round1(fv*rnd(0.9,1.12)),
     releaseClause: Math.random()<0.28 ? round1(fv*rnd(0.9,1.12)*rnd(1.7,2.8)) : null,  // 部分球员自带解约金条款
     owned:false, buyPrice:0, starter:false,
@@ -603,13 +603,27 @@ function sanitizeLineup(){
   syncStarters();
 }
 function starters(){ return G.squad.filter(p=>p.starter && !p.injured); }
+function condFac(p){ const c=p.condition==null?100:p.condition; return clamp(0.7 + c/100*0.3, 0.7, 1); }   // 体能对发挥的影响：满体能1.0，精疲力竭0.7
+function drainCondition(){   // 一场比赛后：出场球员消耗体能（密集赛程不恢复 → 逼你轮换）
+  const lineSet=new Set((G.lineup||[]).filter(x=>x!=null)); const press=(G.tactic||"平衡")==="高位压迫";
+  G.squad.forEach(p=>{ const onPitch=lineSet.has(p.id), off=p._subOff; if(!onPitch && !off) return;
+    const ageF=p.age>=32?1.25:p.age>=29?1.1:p.age<=22?0.85:1;
+    let d=22*ageF*(press?1.18:1)*((off&&!onPitch)?0.6:1); if(hasTrait(p,"ironman")) d*=0.7;
+    p.condition=clamp((p.condition==null?100:p.condition)-Math.round(d),0,100); });
+  G.squad.forEach(p=>{ p._subOff=false; p._subOn=false; });
+}
+function condMini(p){ const c=p.condition==null?100:p.condition; if(c>=92) return ''; const col=c>=70?'#4fc97a':c>=45?'#e3c34a':'var(--down)'; return ` <span style="color:${col};font-size:11px" title="体能 ${Math.round(c)}%">⚡${Math.round(c)}</span>`; }
+function recoverCondition(){  // 每轮（一周休整）：全队恢复体能，年轻人/医疗设施恢复更快
+  const med=staffLevel("med")+((G.facil&&G.facil.medical)?G.facil.medical*0.5:0);
+  G.squad.forEach(p=>{ const ageF=p.age<=23?1.15:p.age>=31?0.8:1; const r=Math.round(26*ageF*(1+0.04*med)); p.condition=clamp((p.condition==null?100:p.condition)+r,0,100); });
+}
 function teamRatings(){
   const ss=slots(); const eff=[]; let cnt=0, hasGK=false; let atB=0, deB=0, ovB=0;
   ss.forEach((s,i)=>{
     const id=G.lineup?G.lineup[i]:null; if(id==null) return;
     const p=G.squad.find(x=>x.id===id); if(!p||p.injured) return;
     cnt++; if(s.pos==="GK") hasGK=true;
-    eff.push({role:POS_LINE[s.pos], x:s.x, val:p.ovr*FORMS[p.formIdx].mult*posEff(p,s.pos)*moraleFac(p)});
+    eff.push({role:POS_LINE[s.pos], x:s.x, val:p.ovr*FORMS[p.formIdx].mult*posEff(p,s.pos)*moraleFac(p)*condFac(p)});
     if(Array.isArray(p.traits)){ // 特质对球队属性的影响
       if(hasTrait(p,"poacher")) atB+=0.012; if(hasTrait(p,"playmaker")) atB+=0.02; if(hasTrait(p,"winger")) atB+=0.008; if(hasTrait(p,"aerial")) atB+=0.006;
       if(hasTrait(p,"rock")) deB+=0.02; if(hasTrait(p,"bigGame")){ atB+=0.006; deB+=0.006; } if(hasTrait(p,"leader")) ovB+=0.008;
@@ -665,7 +679,7 @@ function autoLineup(){
   const n=ss.length; if(!avail.length){ syncStarters(); return; }
   const m=Math.max(n, avail.length);                     // 不足 11 人时用虚拟列补齐
   const cost=[];
-  for(let i=0;i<n;i++){ const row=new Array(m).fill(0); for(let j=0;j<avail.length;j++){ const p=avail[j]; row[j]=-(p.ovr*posEff(p,ss[i].pos)*(1+(FORMS[p.formIdx].mult-1)*0.15)); } cost.push(row); } // 以能力×位置熟练度为主，状态仅作微弱加权（不会让 76 火热盖过 91 冰冷）
+  for(let i=0;i<n;i++){ const row=new Array(m).fill(0); for(let j=0;j<avail.length;j++){ const p=avail[j]; row[j]=-(p.ovr*posEff(p,ss[i].pos)*(1+(FORMS[p.formIdx].mult-1)*0.15)*condFac(p)); } cost.push(row); } // 能力×位置熟练度为主 + 微弱状态 + 体能（自动轮休疲劳球员）
   const ans=hungarianAssign(cost);                       // 全局最优：最大化 Σ 评分×位置熟练度(×微状态)
   for(let i=0;i<n;i++){ const j=ans[i]; if(j>=0 && j<avail.length) G.lineup[i]=avail[j].id; }
   syncStarters();
@@ -854,6 +868,7 @@ function nextRound(){
   const r=teamRatings();
   if(r.count!==11){ toast(`需要恰好 11 名首发（当前 ${r.count} 人）`); switchTab("squad"); return; }
   if(!r.hasGK){ toast("首发必须包含 1 名门将"); switchTab("squad"); return; }
+  recoverCondition();   // 一周休整：全队恢复体能（随后本轮比赛会消耗上场球员的体能）
 
   const youIdx=G.table.findIndex(t=>t.you);
   const myD=myDiv();
@@ -896,6 +911,7 @@ function resolveLeagueMatch(mg,og,ctx){
 
   // 出场记录（首发本轮 +1 app，用于成长）
   starters().forEach(p=>p.apps++);
+  drainCondition();   // 本场上场球员消耗体能
 
   // 全世界各国联赛同步进行，模拟其它所有比赛
   G.leagueScheds.forEach(L=>{
@@ -975,6 +991,8 @@ function evolveMarket(){
     if(Math.random()<0.45) p.formIdx=clamp(p.formIdx+(Math.random()<0.5?-1:1),0,4);
     let injChance = p.owned ? 0.04*Math.max(0.2,1-0.12*med) : 0.04;            // 降低受伤概率（封底20%）
     if(hasTrait(p,"fragile")) injChance*=1.9;                                   // 玻璃人更易伤
+    if(p.owned){ const cond=p.condition==null?100:p.condition; injChance*=1+(100-cond)/100*0.9; }   // 体能越低越易伤
+    if(p.condition!=null && p.condition<35 && Math.random()<0.05) p.formIdx=clamp(p.formIdx-1,0,4);  // 长期疲劳拖累状态
     if(p.injured===0 && Math.random()<injChance){ p.injured=rint(1,3); p.formIdx=clamp(p.formIdx-1,0,4); }
     const fair=fairValue(p.ovr,p.age)*FORMS[p.formIdx].mult*(p.injured?0.78:1);
     p.value=round1(clamp((p.value*0.55+fair*0.45)*rnd(0.96,1.05),0.15,9999));
@@ -1206,6 +1224,7 @@ function endSeason(){
   const wccQualify = !!(G.conti && G.conti.wonTier!=null);  // 洲际冠军 → 下赛季世俱杯
   if(G.conti){ let nt=qualifyTier(rank, finishDiv); if(G.conti.wonTier!=null) nt=0; /* 卫冕：洲际冠军下赛季继续顶级洲际赛事 */ G.conti.tier=nt; G.conti.wonTier=null; G.conti.comp=null; }
   if(G.wcc){ G.wcc.in=wccQualify; G.wcc.comp=null; }
+  G.squad.forEach(p=>p.condition=100);   // 季前休整：体能回满
   G.season++; G.round=1;
   G.table.forEach(t=>{t.P=t.W=t.D=t.L=t.GF=t.GA=t.pts=0;});
   buildSchedules();
@@ -1718,7 +1737,7 @@ function pitchSlotHTML(s,i){
     return `<div class="slot ${oop?'oop':''}" style="left:${s.x}%;top:${s.y}%" draggable="true"
       ondragstart="dragData={from:'slot',slot:${i},id:${p.id}}" ondragover="event.preventDefault()" ondrop="dropOnSlot(${i})"
       onclick="clickSlot(${i})" title="${p.name}（本职 ${POS_CN[p.pos]}${p.pos2&&p.pos2.length?' / 兼 '+p.pos2.map(x=>POS_CN[x]).join('、'):''}｜该位置：${effTxt}）">
-      <div class="disc ${POS_LINE[p.pos]}">${p.ovr}</div><div class="nm">${s.pos}·${lastName(p.name)}</div></div>`;
+      <div class="disc ${POS_LINE[p.pos]}">${p.ovr}</div><div class="nm">${s.pos}·${lastName(p.name)}${condMini(p)}</div></div>`;
   }
   return `<div class="slot empty ${G._sel!=null?'avail':''}" style="left:${s.x}%;top:${s.y}%"
     ondragover="event.preventDefault()" ondrop="dropOnSlot(${i})" onclick="clickSlot(${i})">
@@ -1730,7 +1749,7 @@ function renderPitch(){
   const bench=benchP.map(p=>`<div class="benchchip ${p.injured?'injured':''} ${G._sel===p.id?'sel':''}"
       ${p.injured?'':`draggable="true" ondragstart="dragData={from:'bench',id:${p.id}}"`}
       ${p.injured?'':`onclick="clickBench(${p.id})"`} title="${p.name}">
-      <span class="pos ${POS_LINE[p.pos]}" style="width:26px">${p.pos}</span>${lastName(p.name)} <b>${p.ovr}</b>${p.injured?` 🤕${p.injured}`:""}</div>`).join("")
+      <span class="pos ${POS_LINE[p.pos]}" style="width:26px">${p.pos}</span>${lastName(p.name)} <b>${p.ovr}</b>${p.injured?` 🤕${p.injured}`:condMini(p)}</div>`).join("")
       || `<span class="hint">替补席为空</span>`;
   return `
   <div class="panel">
@@ -2756,7 +2775,7 @@ function playContiMatch(){
 function resolveContiMatch(c,f,mg,og,win){
   f.played=true; f.mg=mg; f.og=og;
   recordMatch(mg,og,f.opp);
-  matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg);   // 洲际赛计入出场/进球/助攻
+  matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); drainCondition();   // 洲际赛计入出场/进球/助攻 + 体能消耗
   const tier=contiTiers()[c.tierIdx];
   if(c.stage==='league'){
     f.win=mg>og; f.draw=mg===og; c.idx++;
@@ -2802,7 +2821,7 @@ function playWCCMatch(){
   });
 }
 function resolveWCCMatch(c,f,mg,og,win){
-  f.played=true; f.mg=mg; f.og=og; recordMatch(mg,og,f.opp); matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); f.win=win;   // 世俱杯计入出场/进球/助攻
+  f.played=true; f.mg=mg; f.og=og; recordMatch(mg,og,f.opp); matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); drainCondition(); f.win=win;   // 世俱杯计入出场/进球/助攻 + 体能消耗
   if(win){ c.idx++; if(c.idx>=c.fixtures.length){ c.done=true; finishWCC(true); } }
   else { c.done=true; finishWCC(false); }
   if(!c.done) toast(`🌎 世俱杯 ${G.club} ${f.mg}-${f.og} ${f.opp}`);
@@ -2873,7 +2892,7 @@ function playCupMatch(){
 function resolveCupMatch(c,f,mg,og,win){
   f.played=true; f.mg=mg; f.og=og;
   recordMatch(mg,og,f.opp);
-  matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); f.win=win;   // 国内杯计入出场/进球/助攻
+  matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); drainCondition(); f.win=win;   // 国内杯计入出场/进球/助攻 + 体能消耗
   if(win){ c.idx++; if(c.idx>=c.fixtures.length){ c.done=true; finishCup(true); } }
   else { c.done=true; finishCup(false); }
   if(!c.done) toast(`🏆 国内杯 ${G.club} ${f.mg}-${f.og} ${f.opp}`);
@@ -2892,7 +2911,7 @@ function resolveSuperCup(mg,og,win){
   const sc=G.superCup; if(!sc) return;
   sc.played=true; sc.mg=mg; sc.og=og; sc.win=win;
   recordMatch(mg,og,sc.opp.name);
-  matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg);
+  matchGrowth(starters()); starters().forEach(p=>p.apps++); creditGoals(starters(),mg); drainCondition();
   if(win){ const prize=6; G.cash=round1(G.cash+prize); G.rep=clamp((G.rep||50)+2,0,100); updateBoard(3); ensureDyn(); G.dyn.superCup++; addHonor("超级杯 冠军"); pushNews(`🛡️ <b>超级杯冠军！</b>${G.club} ${mg}-${og} ${sc.opp.name}，奖金 +${eur(prize)}，声望提升。`,"good"); celebrate({trophy:"🛡️", title:"超级杯 冠军", sub:`${flagOf(G.country)} ${G.club}`, meta:`第 ${G.season} 赛季 · 揭幕之战夺冠`}); }
   else { pushNews(`🛡️ 超级杯：${G.club} ${mg}-${og} ${sc.opp.name}，惜败屈居亚军。`,"bad"); }
   evalAchievements(true);
@@ -3125,6 +3144,7 @@ function playerModalHTML(p){
     <div class="l"><span>周薪</span><b>${eur(p.wage)}/轮</b></div>
     <div class="l"><span>合同</span><b>${p.contractYears} 年${p.contractYears<=1?' ⚠️':''}</b></div>
     <div class="l"><span>士气</span><b>${moraleEmoji(p)} ${Math.round(p.morale==null?70:p.morale)}${p.wantOut?' · 要求转会':''}</b></div>
+    <div class="l"><span>体能</span><b style="color:${(p.condition==null?100:p.condition)>=70?'var(--up)':(p.condition>=45?'#e3c34a':'var(--down)')}">${Math.round(p.condition==null?100:p.condition)}%${(p.condition!=null&&p.condition<55)?' · 需轮休':''}</b></div>
     <div class="l"><span>买入价</span><b>${eur(p.buyPrice||0)} ${fmtChg(p)}</b></div>
     ${p.awards&&(p.awards.ballon||p.awards.boot||p.awards.tots)?`<div class="l"><span>个人荣誉</span><b>${p.awards.ballon?`🥇×${p.awards.ballon} `:''}${p.awards.boot?`👟×${p.awards.boot} `:''}${p.awards.tots?`⚽最佳阵容×${p.awards.tots}`:''}</b></div>`:''}
     <div class="l"><span>解约金</span><b>${p.releaseClause?eur(p.releaseClause):'无'} <button class="btn sm ghost" style="margin-left:6px" onclick="closeOverlay();openClause(${p.id})">设置</button></b></div>
@@ -3441,7 +3461,7 @@ function load(){ try{ const s=localStorage.getItem(SAVE_KEY); if(s){ G=JSON.pars
   if(G.rivalViewConf==null) G.rivalViewConf=G.conf;
   if(G.leagueViewDiv==null) G.leagueViewDiv=myDiv();
   // 迁移：老存档球员是大类位置(GK/DF/MF/FW)，转成具体位置 + 初始化兼职位置
-  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!p.prof||typeof p.prof!=="object"){ p.prof={}; p.pos2.forEach(x=>{ p.prof[x]=round2(clamp(0.65+pairAff(p.pos,x)*0.35,0.65,1.0)); }); } if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); if(p.morale==null) p.morale=70; if(p.owned){ if(p.clubApps==null)p.clubApps=0; if(p.clubGls==null)p.clubGls=0; if(p.clubAst==null)p.clubAst=0; if(p.clubSeasons==null)p.clubSeasons=0; if(p.joinedSeason==null)p.joinedSeason=G.season; } };
+  const fixPos=p=>{ if(!p) return; if(!POS_LINE[p.pos]) p.pos=detailedPos(p.pos); if(!Array.isArray(p.pos2)) p.pos2=[]; if(!p.prof||typeof p.prof!=="object"){ p.prof={}; p.pos2.forEach(x=>{ p.prof[x]=round2(clamp(0.65+pairAff(p.pos,x)*0.35,0.65,1.0)); }); } if(!Array.isArray(p.traits)) p.traits=genTraits(POS_LINE[p.pos], p.ovr, p.potential||p.ovr, p.age); if(p.morale==null) p.morale=70; if(p.condition==null) p.condition=100; if(p.owned){ if(p.clubApps==null)p.clubApps=0; if(p.clubGls==null)p.clubGls=0; if(p.clubAst==null)p.clubAst=0; if(p.clubSeasons==null)p.clubSeasons=0; if(p.joinedSeason==null)p.joinedSeason=G.season; } };
   allPlayers().forEach(fixPos);
   if(G.academy && Array.isArray(G.academy.prospects)) G.academy.prospects.forEach(fixPos);
   if(Array.isArray(G.loans)) G.loans.forEach(o=>fixPos(o.p));
